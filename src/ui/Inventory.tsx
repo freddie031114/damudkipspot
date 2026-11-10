@@ -23,7 +23,7 @@ function EditableCell({ display, initial, onCommit, disabled, align = 'left', la
   if (!editing) {
     return (
       <div role="button" tabIndex={0} aria-label={`Edit ${label}`}
-        className={`min-h-6 cursor-text truncate rounded px-1 hover:bg-indigo-500/10 ${align === 'right' ? 'text-right' : ''}`}
+        className={`min-h-6 cursor-text truncate rounded px-1 hover:bg-brand/10 ${align === 'right' ? 'text-right' : ''}`}
         onClick={() => { setValue(initial); done.current = false; setEditing(true) }}
         onKeyDown={(e) => { if (e.key === 'Enter') { setValue(initial); done.current = false; setEditing(true) } }}>
         {display}
@@ -41,7 +41,7 @@ function EditableCell({ display, initial, onCommit, disabled, align = 'left', la
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false) }
   }
   return (
-    <input autoFocus aria-label={label} className={`w-full rounded border border-indigo-500 bg-transparent px-1 ${align === 'right' ? 'text-right' : ''}`}
+    <input autoFocus aria-label={label} className={`w-full rounded border border-brand bg-transparent px-1 ${align === 'right' ? 'text-right' : ''}`}
       value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={onKey} onBlur={() => finish(true)}
       onFocus={(e) => e.currentTarget.select()} />
   )
@@ -77,6 +77,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const totals = useMemo(() => ({
     units: visible.reduce((n, r) => n + r.qty, 0),
     value: visible.reduce((n, r) => n + r.marketValueCents, 0),
+    sticker: visible.reduce((n, r) => n + r.qty * r.sticker, 0),
     known: visible.reduce((n, r) => n + r.knownCostCents, 0),
     unknown: visible.filter((r) => r.costUnknown).length,
   }), [visible])
@@ -107,12 +108,13 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-4 border-b border-slate-300 px-4 py-1.5 text-sm dark:border-slate-700" aria-label="Totals">
+      <div className="flex items-center gap-4 border-b border-line px-4 py-1.5 text-sm" aria-label="Totals">
         <span><strong>{visible.length}</strong> items</span>
         <span><strong>{totals.units}</strong> units</span>
         <span>Market value <strong>{formatAud(totals.value)}</strong></span>
+        <span>Sticker value <strong>{formatAud(totals.sticker)}</strong></span>
         <span className="opacity-70">Known cost {formatAud(totals.known)}{totals.unknown > 0 && ` (${totals.unknown} items with no cost recorded)`}</span>
-        {readOnly && <span className="ml-auto rounded bg-slate-200 px-2 py-0.5 dark:bg-slate-700">Combined view is read-only</span>}
+        {readOnly && <span className="ml-auto rounded bg-chip px-2 py-0.5">Combined view is read-only</span>}
         {!readOnly && selected.size > 0 && (
           <span className="ml-auto flex items-center gap-2">
             {selected.size} selected
@@ -124,7 +126,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
         )}
       </div>
 
-      <div className="grid items-center gap-2 border-b border-slate-300 px-4 py-1.5 text-xs uppercase tracking-wide dark:border-slate-700" style={{ gridTemplateColumns: COLS }}>
+      <div className="grid items-center gap-2 border-b border-line px-4 py-1.5 text-xs uppercase tracking-wide" style={{ gridTemplateColumns: COLS }}>
         <input type="checkbox" aria-label="Select all" checked={allSelected} disabled={readOnly}
           onChange={() => setSelected(allSelected ? new Set() : new Set(visible.map((r) => r.item.id)))} />
         {header('name', 'Name')}<span className="px-1">Set / #</span><span className="px-1">Lang · Cond</span>
@@ -141,12 +143,12 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
             const it = r.item
             const flags = [r.oversold > 0 && `Oversold ${r.oversold}`, r.lowStock && 'Low', r.stalePrice && 'Stale', r.costUnknown && 'No cost'].filter(Boolean) as string[]
             return (
-              <div key={it.id} role="row" className="group absolute left-0 grid w-full items-center gap-2 border-b border-slate-200 px-4 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
+              <div key={it.id} role="row" className="group absolute left-0 grid w-full items-center gap-2 border-b border-line px-4 text-sm hover:bg-hover"
                 style={{ gridTemplateColumns: COLS, height: v.size, transform: `translateY(${v.start}px)` }}>
                 <input type="checkbox" aria-label={`Select ${it.name}`} disabled={readOnly} checked={selected.has(it.id)}
                   onChange={() => { const s = new Set(selected); if (s.has(it.id)) s.delete(it.id); else s.add(it.id); setSelected(s) }} />
                 <EditableCell label={`name of ${it.name}`} disabled={readOnly} initial={it.name}
-                  display={<>{view === 'all' && <span className="mr-1 rounded bg-slate-200 px-1 text-xs dark:bg-slate-700">{DEFAULT_NAMES[it.profileId]}</span>}{it.name}</>}
+                  display={<>{view === 'all' && <span className="mr-1 rounded bg-chip px-1 text-xs">{DEFAULT_NAMES[it.profileId]}</span>}{it.name}</>}
                   onCommit={(v) => run(() => updateItem(ctx(), it, { name: v.trim() }))} />
                 <div className="truncate px-1 opacity-80">{[it.setName, it.cardNumber, it.variant].filter(Boolean).join(' · ')}</div>
                 <div className="truncate px-1 opacity-80">{[it.language, it.condition || it.grade && `${it.gradingCompany} ${it.grade}`].filter(Boolean).join(' · ')}</div>
@@ -166,7 +168,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
                 <EditableCell label={`location of ${it.name}`} disabled={readOnly} initial={it.location} display={it.location || <span className="opacity-40">—</span>}
                   onCommit={(v) => run(() => updateItem(ctx(), it, { location: v.trim() }))} />
                 <div className="flex items-center gap-1 truncate text-xs">
-                  {flags.map((f) => <span key={f} className="rounded bg-amber-500/20 px-1 text-amber-700 dark:text-amber-300">{f}</span>)}
+                  {flags.map((f) => <span key={f} className="rounded bg-accent/20 px-1 text-accent-ink">{f}</span>)}
                   <button className={`${btnCls} ml-auto !px-2 !py-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100`} aria-label={`Sell ${it.name}`} disabled={r.qty < 1} onClick={() => onSell(r)}>Sell</button>
                 </div>
               </div>

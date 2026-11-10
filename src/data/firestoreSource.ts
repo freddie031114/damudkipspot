@@ -1,5 +1,6 @@
 import { collection, doc, onSnapshot, writeBatch, type Firestore } from 'firebase/firestore'
 import type { RawData } from './derive'
+import { chunkOps } from './chunk'
 import type { DataSource } from './source'
 import type { Adjustment, Item, Lot, Sale } from './types'
 
@@ -32,11 +33,9 @@ export function firestoreSource(db: Firestore): DataSource {
 
     async commit(ops) {
       const batches: Promise<void>[] = []
-      for (let i = 0; i < ops.length; i += BATCH_LIMIT) {
+      for (const group of chunkOps(ops, BATCH_LIMIT)) {
         const batch = writeBatch(db)
-        for (const op of ops.slice(i, i + BATCH_LIMIT)) {
-          batch.set(doc(db, op.collection, op.id), op.data, { merge: op.merge })
-        }
+        for (const op of group) batch.set(doc(db, op.collection, op.id), op.data, { merge: op.merge })
         batches.push(batch.commit())
       }
       await Promise.all(batches)

@@ -78,7 +78,7 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
           <ul className="mt-2" role="listbox">
             {results.map((r, i) => (
               <li key={r.item.id} role="option" aria-selected={i === cursor}
-                className={`flex cursor-pointer justify-between rounded px-2 py-1.5 ${i === cursor ? 'bg-indigo-600 text-white' : ''}`}
+                className={`flex cursor-pointer justify-between rounded px-2 py-1.5 ${i === cursor ? 'bg-brand text-brand-fg' : ''}`}
                 onMouseEnter={() => setCursor(i)} onClick={() => pick(r)}>
                 <span>{r.item.name} <span className="opacity-70">{r.item.cardNumber} {r.item.variant}</span></span>
                 <span>{formatAud(r.sticker)} · {r.qty} left</span>
@@ -105,7 +105,7 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
           <div className="mb-3 flex gap-2" role="radiogroup" aria-label="Payment method">
             {METHODS.map((m, i) => (
               <button type="button" key={m.id} role="radio" aria-checked={method === m.id} onClick={() => setMethod(m.id)}
-                className={`flex-1 rounded border px-2 py-1.5 text-sm ${method === m.id ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 dark:border-slate-600'}`}>
+                className={`flex-1 rounded border px-2 py-1.5 text-sm ${method === m.id ? 'border-brand bg-brand text-brand-fg' : 'border-line'}`}>
                 {m.label} <span className="text-xs opacity-60">Ctrl+{i + 1}</span>
               </button>
             ))}

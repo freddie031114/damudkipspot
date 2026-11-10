@@ -96,7 +96,7 @@ export function QuickAdd({ owner, onClose }: { owner: ProfileId; onClose: () => 
         <label className={`${field} col-span-2`}>Market price<input className={inputCls} inputMode="decimal" value={f.market} onChange={set('market')} placeholder="$" /></label>
 
         {dupes.length > 0 && (
-          <div className="col-span-6 rounded border border-amber-500/50 p-2 text-sm">
+          <div className="col-span-6 rounded border border-accent p-2 text-sm">
             <p className="mb-1 font-medium">Already in stock. Add to one of these instead?</p>
             {dupes.map((d) => (
               <div key={d.item.id} className="flex items-center justify-between py-0.5">

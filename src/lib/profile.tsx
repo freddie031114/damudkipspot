@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 
 export type ProfileId = 'p1' | 'p2'
 export const PROFILE_IDS: ProfileId[] = ['p1', 'p2']
-export const DEFAULT_NAMES: Record<ProfileId, string> = { p1: 'Me', p2: 'Friend' }
+export const DEFAULT_NAMES: Record<ProfileId, string> = { p1: 'Freddie', p2: 'Ferrell' }
 
 const KEY = 'damudkipspot.actingProfile'
 

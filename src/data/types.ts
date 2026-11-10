@@ -70,7 +70,9 @@ export interface Adjustment extends Base {
 
 export type { PaymentMethod }
 
-export type Collection = 'items' | 'lots' | 'sales' | 'adjustments' | 'priceHistory' | 'auditLog'
+export type Collection =
+  | 'items' | 'lots' | 'sales' | 'adjustments' | 'priceHistory' | 'auditLog'
+  | 'importBatches' | 'shows' | 'showExpenses' | 'savedViews'
 
 export interface WriteOp {
   collection: Collection
@@ -78,6 +80,8 @@ export interface WriteOp {
   data: Record<string, unknown>
   /** true = merge into an existing doc; false = create/replace. */
   merge: boolean
+  /** Ops sharing an atom are never split across Firestore batches (e.g. an item and its first lot). */
+  atom?: string
 }
 
 export const NEW_ITEM_DEFAULTS = {

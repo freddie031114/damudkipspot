@@ -2,8 +2,9 @@ import { createItem, type Ctx } from './changes'
 import { memorySource } from './memorySource'
 
 /** Sample stock for the dev-only demo mode (?demo). Never used in production builds. */
-export function demoSource() {
+export function demoSource(empty = false) {
   const src = memorySource()
+  if (empty) return src
   let n = 0
   const ctx: Ctx = { actor: 'p1', now: Date.now() - 3_600_000, newId: () => `demo${++n}` }
   const add = (profileId: 'p1' | 'p2', name: string, number: string, market: number, qty: number, location: string, cost: number | null = null) =>

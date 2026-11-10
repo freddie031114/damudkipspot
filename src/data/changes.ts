@@ -6,6 +6,7 @@
 import { saleTotals, validateSale, type SaleDraft } from '../domain/sale'
 import type { Adjustment, Item, Lot, ProfileId, Sale, WriteOp } from './types'
 import { NEW_ITEM_DEFAULTS, type NewItem } from './types'
+import type { ImportRow } from '../import/types'
 
 export interface Ctx {
   actor: ProfileId
@@ -62,22 +63,25 @@ export interface FirstLot {
   source?: Lot['source']
 }
 
+export function makeItem(ctx: Ctx, input: Partial<NewItem> & Pick<NewItem, 'profileId' | 'name'>): Item {
+  return {
+    ...NEW_ITEM_DEFAULTS,
+    ...input,
+    id: ctx.newId(),
+    marketPriceUpdatedAt: ctx.now,
+    deletedAt: null,
+    ...born(ctx),
+  }
+}
+
 export function createItem(ctx: Ctx, input: Partial<NewItem> & Pick<NewItem, 'profileId' | 'name'>, first?: FirstLot): Change {
   const name = input.name.trim()
   if (!name) throw new Error('Name is required')
   if (input.marketPriceCents !== undefined && (!Number.isInteger(input.marketPriceCents) || input.marketPriceCents < 0)) {
     throw new Error('Market price must be zero or more')
   }
-  const id = ctx.newId()
-  const item: Item = {
-    ...NEW_ITEM_DEFAULTS,
-    ...input,
-    name,
-    id,
-    marketPriceUpdatedAt: ctx.now,
-    deletedAt: null,
-    ...born(ctx),
-  }
+  const item = makeItem(ctx, { ...input, name })
+  const id = item.id
   const ops: WriteOp[] = [{ collection: 'items', id, data: item as unknown as Record<string, unknown>, merge: false }]
   const created = [id]
   const lotIds: string[] = []
@@ -243,6 +247,57 @@ export function voidSale(ctx: Ctx, sale: Sale): Change | null {
     ops: [
       { collection: 'sales', id: sale.id, merge: true, data: { voidedAt: ctx.now, voidedBy: ctx.actor, ...stamp(ctx) } },
       audit(ctx, 'sale', sale.id, 'void', sale.lines[0]?.ownerProfileId ?? ctx.actor),
+    ],
+  }
+}
+
+// ---------- bulk import ----------
+
+
+
+/**
+ * Imports reviewed rows as new items with opening lots. One audit entry and one importBatches
+ * record cover the whole import, and the inverse soft-deletes everything it created.
+ */
+export function importItems(ctx: Ctx, rows: ImportRow[], filename: string): Change & { count: number; batchId: string } {
+  const use = rows.filter((r) => r.include && r.marketCents !== null && r.blocking.length === 0)
+  if (use.length === 0) throw new Error('Nothing to import')
+  const batchId = ctx.newId()
+  const ops: WriteOp[] = [
+    {
+      collection: 'importBatches', id: batchId, merge: false,
+      data: { id: batchId, filename, rowCount: use.length, profileIds: [...new Set(use.map((r) => r.profileId))], undoneAt: null, ...born(ctx) },
+    },
+  ]
+  const itemIds: string[] = []
+  const lotIds: string[] = []
+  for (const r of use) {
+    const name = r.name.trim()
+    if (!name) throw new Error(`${r.source}: name is required`)
+    if (!Number.isInteger(r.qty) || r.qty < 1) throw new Error(`${r.source}: quantity must be a whole number of at least 1`)
+    const item = makeItem(ctx, {
+      profileId: r.profileId, name, kind: r.kind, game: r.game, setName: r.setName, cardNumber: r.cardNumber,
+      language: r.language, variant: r.variant, condition: r.condition, gradingCompany: r.gradingCompany, grade: r.grade,
+      marketPriceCents: r.marketCents!, stickerOverrideCents: r.stickerOverrideCents, location: r.location, importBatchId: batchId,
+    })
+    const lot = lotOp(ctx, item.id, item.profileId, r.qty, r.costCents, r.costCents === null ? 'opening' : 'import', batchId)
+    ops.push({ collection: 'items', id: item.id, merge: false, data: item as unknown as Record<string, unknown>, atom: item.id })
+    ops.push({ ...lot, atom: item.id })
+    if (item.marketPriceCents > 0) ops.push({ ...priceHistoryOp(ctx, item.id, item.marketPriceCents, 'import'), atom: item.id })
+    itemIds.push(item.id)
+    lotIds.push(lot.id)
+  }
+  ops.push(audit(ctx, 'import', batchId, 'import', use[0]!.profileId, { filename, rows: use.length }))
+  return {
+    count: use.length,
+    batchId,
+    label: `Imported ${use.length} items`,
+    ops,
+    inverse: (c) => [
+      ...itemIds.map((i) => ({ ...softDeleteOp(c, 'items', i, true), atom: i })),
+      ...lotIds.map((l, n) => ({ ...softDeleteOp(c, 'lots', l, true), atom: itemIds[n]! })),
+      { collection: 'importBatches' as const, id: batchId, merge: true, data: { undoneAt: c.now, ...stamp(c) } },
+      audit(c, 'import', batchId, 'undo-import', use[0]!.profileId),
     ],
   }
 }

@@ -73,7 +73,8 @@ export function buildInventory(d: RawData, settings: Settings = DEFAULT_SETTINGS
     .filter((i) => !i.deletedAt)
     .map((item) => {
       const qty = fifo.onHandByItem.get(item.id) ?? 0
-      const sticker = effectiveSticker(item, settings.multiplierPermille, settings.rounding)
+      // Bulk is a lump-sum value, not something with a sticker: it counts at market.
+      const sticker = item.kind === 'bulk' ? item.marketPriceCents : effectiveSticker(item, settings.multiplierPermille, settings.rounding)
       const costUnknown = (stockByItem.get(item.id) ?? []).some(
         (s) => s.unitCostCents === null && (fifo.remainingBySupply.get(s.id) ?? 0) > 0,
       )

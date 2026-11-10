@@ -105,6 +105,16 @@ describe('stock through sales, voids and deletes', () => {
   })
 })
 
+describe('bulk items', () => {
+  it('count at their lump-sum value with no sticker markup', () => {
+    const s = empty()
+    applyOps(s, createItem(ctx(), { profileId: 'p1', name: 'Bulk cards', kind: 'bulk', marketPriceCents: 175000 }, { qty: 1, unitCostCents: null, source: 'opening' }).ops)
+    const row = buildInventory(s)[0]!
+    expect(row.sticker).toBe(175000)
+    expect(row.marketValueCents).toBe(175000)
+  })
+})
+
 describe('derived flags and search', () => {
   it('flags unknown cost, low stock and stale prices', () => {
     const s = empty()
