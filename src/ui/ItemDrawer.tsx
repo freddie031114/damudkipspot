@@ -7,6 +7,7 @@ import { formatAud, parseMoney } from '../domain/money'
 import { allocateFifo } from '../domain/fifo'
 import { supplyAndDemand } from '../data/derive'
 import { btnCls, ghostBtn, inputCls } from './common'
+import { parseGrade } from '../domain/grade'
 import { fmtDate, fmtDateTime, nameOf } from './format'
 
 const lbl = 'block text-xs font-medium'
@@ -69,41 +70,60 @@ export function ItemDrawer({ itemId, onClose }: { itemId: string; onClose: () =>
           <button aria-label="Close details" className="px-2 text-2xl leading-none" onClick={onClose}>×</button>
         </div>
 
-        <section className="mb-5 grid grid-cols-6 gap-3" key={item.updatedAt} aria-label="Details">
-          <Text className="col-span-4" label="Name" value={item.name} onCommit={(v) => edit({ name: v })} />
-          <label className={`${lbl} col-span-2`}>Type
-            <select className={inputCls} value={item.kind} onChange={(e) => edit({ kind: e.target.value as typeof item.kind })}>
-              <option value="single">Single</option><option value="graded">Graded slab</option><option value="sealed">Sealed product</option><option value="bulk">Bulk</option><option value="other">Other</option>
-            </select>
-          </label>
-          <Text className="col-span-3" label="Set" value={item.setName} onCommit={(v) => edit({ setName: v.trim() })} />
-          <Text className="col-span-2" label="Number" value={item.cardNumber} onCommit={(v) => edit({ cardNumber: v.trim() })} />
-          <Text className="col-span-1" label="Lang" value={item.language} onCommit={(v) => edit({ language: v.trim() })} />
-          <Text className="col-span-2" label="Variant / finish" value={item.variant} onCommit={(v) => edit({ variant: v.trim() })} />
-          <Text className="col-span-1" label="Cond." value={item.condition} onCommit={(v) => edit({ condition: v.trim() })} />
-          <Text className="col-span-1" label="Grader" value={item.gradingCompany} onCommit={(v) => edit({ gradingCompany: v.trim().toUpperCase() })} />
-          <Text className="col-span-1" label="Grade" value={item.grade} onCommit={(v) => edit({ grade: v.trim() })} />
-          <Text className="col-span-3" label="Game" value={item.game} onCommit={(v) => edit({ game: v.trim() })} />
-          <Text className="col-span-3" label="Location" value={item.location} onCommit={(v) => edit({ location: v.trim() })} />
-          <label className={`${lbl} col-span-2`}>Market price
-            <input className={inputCls} inputMode="decimal" defaultValue={(item.marketPriceCents / 100).toFixed(2)}
-              onBlur={(e) => { const c = parseMoney(e.target.value); if (c === null || c < 0) { notify('Enter a valid price', true); e.target.value = (item.marketPriceCents / 100).toFixed(2) } else edit({ marketPriceCents: c }) }} />
-          </label>
-          <label className={`${lbl} col-span-2`}>Sticker (blank = market × multiplier)
-            <input className={inputCls} inputMode="decimal" placeholder={row ? (row.sticker / 100).toFixed(2) : ''} defaultValue={item.stickerOverrideCents === null ? '' : (item.stickerOverrideCents / 100).toFixed(2)}
-              onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ stickerOverrideCents: null }); else { const c = parseMoney(v); if (c === null || c < 0) notify('Enter a valid sticker price', true); else edit({ stickerOverrideCents: c }) } }} />
-          </label>
-          <label className={`${lbl} col-span-2`}>On the sticker now
-            <input className={inputCls} inputMode="decimal" placeholder="not stickered" defaultValue={item.stickeredPriceCents === null ? '' : (item.stickeredPriceCents / 100).toFixed(2)}
-              onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ stickeredPriceCents: null }); else { const c = parseMoney(v); if (c === null || c < 0) notify('Enter a valid price', true); else edit({ stickeredPriceCents: c }) } }} />
-          </label>
-          <label className={`${lbl} col-span-2`}>Low stock at or below
-            <input className={inputCls} inputMode="numeric" defaultValue={item.lowStockThreshold ?? ''} placeholder="off"
-              onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ lowStockThreshold: null }); else { const n = Number(v); if (Number.isInteger(n) && n >= 0) edit({ lowStockThreshold: n }); else notify('Use a whole number, or blank to turn off', true) } }} />
-          </label>
-          <label className={`${lbl} col-span-6`}>Notes
-            <textarea className={`${inputCls} h-16`} defaultValue={item.notes} onBlur={(e) => { if (e.target.value !== item.notes) edit({ notes: e.target.value }) }} />
-          </label>
+        <section className="mb-5" key={item.updatedAt} aria-label="Details">
+          <div className="grid grid-cols-6 gap-3">
+            <Text className="col-span-6" label="Name" value={item.name} onCommit={(v) => edit({ name: v })} />
+            <Text className="col-span-3" label="Number" value={item.cardNumber} onCommit={(v) => edit({ cardNumber: v.trim() })} />
+            <label className={`${lbl} col-span-3`}>Condition
+              <input className={inputCls} list="conditions" defaultValue={item.condition} placeholder="NM, LP, PSA 9…"
+                onBlur={(e) => {
+                  const v = e.target.value.trim()
+                  if (v === item.condition) return
+                  const g = parseGrade(v)
+                  // "PSA 9" in the condition also marks it as a graded slab.
+                  edit(g ? { condition: v, gradingCompany: g.gradingCompany, grade: g.grade, kind: 'graded' } : { condition: v })
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
+            </label>
+            <label className={`${lbl} col-span-3`}>Market price
+              <input className={inputCls} inputMode="decimal" defaultValue={(item.marketPriceCents / 100).toFixed(2)}
+                onBlur={(e) => { const c = parseMoney(e.target.value); if (c === null || c < 0) { notify('Enter a valid price', true); e.target.value = (item.marketPriceCents / 100).toFixed(2) } else edit({ marketPriceCents: c }) }} />
+            </label>
+            <label className={`${lbl} col-span-3`}>Sticker (blank = market × multiplier)
+              <input className={inputCls} inputMode="decimal" placeholder={row ? (row.sticker / 100).toFixed(2) : ''} defaultValue={item.stickerOverrideCents === null ? '' : (item.stickerOverrideCents / 100).toFixed(2)}
+                onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ stickerOverrideCents: null }); else { const c = parseMoney(v); if (c === null || c < 0) notify('Enter a valid sticker price', true); else edit({ stickerOverrideCents: c }) } }} />
+            </label>
+          </div>
+          <datalist id="conditions">{['NM', 'LP', 'MP', 'HP', 'DMG', 'PSA 10', 'PSA 9', 'CGC 10', 'BGS 9.5'].map((c) => <option key={c} value={c} />)}</datalist>
+
+          <details className="mt-3 rounded-xl border border-line px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium">More details</summary>
+            <div className="mt-3 grid grid-cols-6 gap-3">
+              <label className={`${lbl} col-span-3`}>Type
+                <select className={inputCls} value={item.kind} onChange={(e) => edit({ kind: e.target.value as typeof item.kind })}>
+                  <option value="single">Single</option><option value="graded">Graded slab</option><option value="sealed">Sealed product</option><option value="bulk">Bulk</option><option value="other">Other</option>
+                </select>
+              </label>
+              <Text className="col-span-3" label="Location" value={item.location} onCommit={(v) => edit({ location: v.trim() })} />
+              <Text className="col-span-4" label="Set" value={item.setName} onCommit={(v) => edit({ setName: v.trim() })} />
+              <Text className="col-span-2" label="Language" value={item.language} onCommit={(v) => edit({ language: v.trim() })} />
+              <Text className="col-span-3" label="Variant / finish" value={item.variant} onCommit={(v) => edit({ variant: v.trim() })} />
+              <Text className="col-span-3" label="Game" value={item.game} onCommit={(v) => edit({ game: v.trim() })} />
+              <Text className="col-span-3" label="Grader" value={item.gradingCompany} onCommit={(v) => edit({ gradingCompany: v.trim().toUpperCase() })} />
+              <Text className="col-span-3" label="Grade" value={item.grade} onCommit={(v) => edit({ grade: v.trim() })} />
+              <label className={`${lbl} col-span-3`}>On the sticker now
+                <input className={inputCls} inputMode="decimal" placeholder="not stickered" defaultValue={item.stickeredPriceCents === null ? '' : (item.stickeredPriceCents / 100).toFixed(2)}
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ stickeredPriceCents: null }); else { const c = parseMoney(v); if (c === null || c < 0) notify('Enter a valid price', true); else edit({ stickeredPriceCents: c }) } }} />
+              </label>
+              <label className={`${lbl} col-span-3`}>Low stock at or below
+                <input className={inputCls} inputMode="numeric" defaultValue={item.lowStockThreshold ?? ''} placeholder="off"
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ lowStockThreshold: null }); else { const n = Number(v); if (Number.isInteger(n) && n >= 0) edit({ lowStockThreshold: n }); else notify('Use a whole number, or blank to turn off', true) } }} />
+              </label>
+              <label className={`${lbl} col-span-6`}>Notes
+                <textarea className={`${inputCls} h-16`} defaultValue={item.notes} onBlur={(e) => { if (e.target.value !== item.notes) edit({ notes: e.target.value }) }} />
+              </label>
+            </div>
+          </details>
         </section>
 
         <section className="mb-5" aria-label="Stock lots">

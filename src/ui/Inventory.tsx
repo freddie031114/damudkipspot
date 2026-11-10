@@ -4,6 +4,7 @@ import { adjustStock, combineChanges, createItem, deleteItems, markStickered, up
 import { matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
+import { slabLabel } from '../domain/grade'
 import { formatAud, parseMoney } from '../domain/money'
 import { btnCls, ghostBtn } from './common'
 import { SavedViews } from './SavedViews'
@@ -198,6 +199,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
           {virt.getVirtualItems().map((v) => {
             const r = visible[v.index]!
             const it = r.item
+            const slab = slabLabel(it)
             const flags = [r.oversold > 0 && `Oversold ${r.oversold}`, r.lowStock && 'Low', r.needsSticker && 'Re-sticker', r.stalePrice && 'Stale'].filter(Boolean) as string[]
             return (
               <div key={it.id} role="row" className="group absolute left-0 grid w-full items-center gap-2 border-b border-line/60 px-4 text-[13px] transition-colors hover:bg-hover/70"
@@ -209,9 +211,9 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
                     <EditableCell label={`name of ${it.name}`} initial={it.name} display={it.name}
                       onCommit={(v) => run(() => updateItem(ctx(), it, { name: v.trim() }))} />
                   </div>
-                  {it.gradingCompany && it.grade && <span className="shrink-0 rounded bg-chip px-1.5 text-[11px] font-semibold">{it.gradingCompany} {it.grade}</span>}
+                  {slab && <span className="shrink-0 rounded bg-chip px-1.5 text-[11px] font-semibold">{slab}</span>}
                   <span className="min-w-0 flex-1 cursor-pointer truncate text-xs opacity-60 hover:opacity-100" title="Open details" onClick={() => openItem(it.id)}>
-                    {[it.cardNumber, it.setName, it.variant, it.language !== 'EN' && it.language, it.condition].filter(Boolean).join(' · ')}
+                    {[it.cardNumber, !slab && it.condition, it.variant].filter(Boolean).join(' · ')}
                   </span>
                   {flags.map((f) => <span key={f} className="shrink-0 rounded-full bg-accent/15 px-2 text-[11px] font-medium text-accent-ink">{f}</span>)}
                 </div>
