@@ -107,7 +107,7 @@ export function ShowMode() {
         <section className="flex min-h-0 flex-col" aria-label="Find a card">
           <input ref={searchRef} aria-label="Search stock" className="w-full rounded-lg border-2 border-brand bg-transparent px-4 py-3 text-2xl"
             placeholder="Search name, number, set…  then Enter to add" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onSearchKey} />
-          <ul className="mt-2 min-h-0 flex-1 overflow-y-auto" role="listbox" aria-label="Matches">
+          <ul className="mt-2 min-h-0 min-w-0 flex-1 overflow-auto" role="listbox" aria-label="Matches">
             {results.map((r, i) => (
               <li key={r.item.id} role="option" aria-selected={i === cursor} onMouseEnter={() => setCursor(i)} onClick={() => add(r)}
                 className={`flex cursor-pointer items-center justify-between rounded px-3 py-2 text-lg ${i === cursor ? 'bg-brand text-brand-fg' : 'hover:bg-hover'}`}>
@@ -138,7 +138,7 @@ export function ShowMode() {
 
         <aside className="flex min-h-0 flex-col rounded-lg border border-line bg-surface p-3" aria-label="Current sale">
           <h2 className="mb-2 font-semibold">Current sale</h2>
-          <ul className="min-h-0 flex-1 overflow-y-auto">
+          <ul className="min-h-0 min-w-0 flex-1 overflow-auto">
             {cart.map((l, i) => (
               <li key={l.itemId + l.unitPriceCents} className="border-t border-line py-2 first:border-0">
                 <div className="flex justify-between gap-2"><span className="font-medium">{l.name}</span><button aria-label={`Remove ${l.name}`} onClick={() => setCart((c) => c.filter((_, n) => n !== i))}>×</button></div>

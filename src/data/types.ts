@@ -30,6 +30,8 @@ export interface Item extends Base {
   /** Market price before the most recent change (for top movers). */
   previousMarketPriceCents: number | null
   stickerOverrideCents: number | null
+  /** The price on the physical sticker; null if not stickered yet. Drives the re-sticker flag. */
+  stickeredPriceCents: number | null
   location: string
   notes: string
   tags: string[]
@@ -102,6 +104,7 @@ export const NEW_ITEM_DEFAULTS = {
   marketPriceCents: 0,
   previousMarketPriceCents: null as number | null,
   stickerOverrideCents: null as number | null,
+  stickeredPriceCents: null as number | null,
   location: '',
   notes: '',
   tags: [] as string[],

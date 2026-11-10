@@ -19,6 +19,8 @@ export interface ImportRow {
   marketCents: number | null
   /** Manual sticker only when the sheet's sticker differs from market x 1.1. */
   stickerOverrideCents: number | null
+  /** Price on the physical sticker, when the source says (the sheet's sticker column). */
+  stickeredCents: number | null
   /** Per-unit cost in cents; null when unknown (opening stock). */
   costCents: number | null
   location: string

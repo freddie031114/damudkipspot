@@ -6,6 +6,7 @@ import { DEFAULT_NAMES, PROFILE_IDS, useActingProfile } from '../lib/profile'
 import { applyPwaUpdate, PWA_UPDATE_EVENT } from '../lib/pwa'
 import { toggleTheme } from '../lib/theme'
 import { CheatSheet } from './CheatSheet'
+import { CommandPalette } from './CommandPalette'
 import { btnCls, ghostBtn, isTyping } from './common'
 import { ImportWizard } from './ImportWizard'
 import { Inventory, type View } from './Inventory'
@@ -83,7 +84,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
   const location = useLocation()
   const [view, setView] = useState<View>(acting ?? 'p1')
   const [search, setSearch] = useState('')
-  const [modal, setModal] = useState<null | { kind: 'add' } | { kind: 'sell'; row?: InventoryRow } | { kind: 'keys' } | { kind: 'import' }>(null)
+  const [modal, setModal] = useState<null | { kind: 'add' } | { kind: 'sell'; row?: InventoryRow } | { kind: 'keys' } | { kind: 'import' } | { kind: 'palette' }>(null)
   const [itemId, setItemId] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const goPending = useRef(0)
@@ -91,6 +92,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setModal((m) => (m?.kind === 'palette' ? null : { kind: 'palette' })); return }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !isTyping(e.target)) { e.preventDefault(); undo(); return }
       if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target) || modal || itemId) return
       if (goPending.current && Date.now() - goPending.current < 1200) {
@@ -142,7 +144,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
         <UpdateBanner />
         {!fullScreen && (
           <header className="border-b border-line">
-            <div className="flex items-center gap-3 px-4 py-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2">
               <Wordmark />
               <nav className="flex gap-1" aria-label="Inventory view">
                 {tab('p1', DEFAULT_NAMES.p1, '1')}{tab('p2', DEFAULT_NAMES.p2, '2')}{tab('all', 'Combined', '3')}
@@ -150,12 +152,12 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
               <input ref={searchRef} aria-label="Search inventory" placeholder="Search  ( / )" value={search}
                 onChange={(e) => { setSearch(e.target.value); if (location.pathname !== '/') navigate('/') }}
                 onKeyDown={(e) => { if (e.key === 'Escape') { setSearch(''); e.currentTarget.blur() } }}
-                className="min-w-0 max-w-md flex-1 rounded border border-line bg-transparent px-3 py-1.5" />
+                className="min-w-40 max-w-md flex-1 rounded border border-line bg-transparent px-3 py-1.5" />
               <button className={btnCls} onClick={ui.openAdd}>Add (N)</button>
               <button className={btnCls} onClick={() => ui.openSell()}>Sell (S)</button>
               <button className={ghostBtn} onClick={ui.openImport}>Import</button>
               <button className={ghostBtn} onClick={undo} disabled={!canUndo}>Undo</button>
-              <span className="ml-auto flex items-center gap-3">
+              <span className="ml-auto flex flex-wrap items-center gap-3">
                 <StatusPill />
                 <label className="text-sm">Using as{' '}
                   <select aria-label="Acting profile" className="rounded border border-line bg-transparent px-1 py-0.5" value={acting ?? ''} onChange={(e) => setActing(e.target.value as 'p1' | 'p2')}>
@@ -167,7 +169,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
                 {onSignOut && <button className="text-sm underline" title={email} onClick={() => { if (!pending || confirm('Some changes have not synced yet. Signing out now may lose them. Sign out anyway?')) onSignOut() }}>Sign out</button>}
               </span>
             </div>
-            <nav className="flex gap-1 px-4 pb-1.5" aria-label="Screens">
+            <nav className="flex gap-1 overflow-x-auto px-4 pb-1.5" aria-label="Screens">
               {NAV.map((n) => (
                 <NavLink key={n.to} to={n.to} end={n.end}
                   className={({ isActive }) => `rounded px-3 py-1 text-sm ${isActive ? 'bg-chip font-semibold' : 'hover:bg-hover'}`}>
@@ -197,6 +199,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
         {modal?.kind === 'add' && <QuickAdd owner={owner} onClose={() => setModal(null)} />}
         {modal?.kind === 'sell' && <QuickSell initial={modal.row} onClose={() => setModal(null)} />}
         {modal?.kind === 'keys' && <CheatSheet onClose={() => setModal(null)} />}
+        {modal?.kind === 'palette' && <CommandPalette onClose={() => setModal(null)} />}
         {modal?.kind === 'import' && <ImportWizard onClose={() => setModal(null)} />}
         {itemId && <ItemDrawer itemId={itemId} onClose={() => setItemId(null)} />}
         <Toasts />

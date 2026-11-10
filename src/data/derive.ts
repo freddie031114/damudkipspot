@@ -27,6 +27,8 @@ export interface InventoryRow {
   oversold: number
   lowStock: boolean
   stalePrice: boolean
+  /** The physical sticker is off from the current sticker price by more than the threshold. */
+  needsSticker: boolean
 }
 
 export interface InventoryData {
@@ -104,6 +106,9 @@ export function buildInventory(d: InventoryData, settings: Settings | SettingsFo
         oversold: fifo.oversoldByItem.get(item.id) ?? 0,
         lowStock: item.lowStockThreshold !== null && qty <= item.lowStockThreshold,
         stalePrice: item.kind !== 'bulk' && now - item.marketPriceUpdatedAt > settings.stalePriceDays * DAY,
+        needsSticker:
+          item.kind !== 'bulk' && item.stickeredPriceCents !== null && item.stickeredPriceCents > 0 &&
+          (Math.abs(sticker - item.stickeredPriceCents) / item.stickeredPriceCents) * 100 > settings.restickerPct,
       }
     })
 }

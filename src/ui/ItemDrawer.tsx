@@ -93,6 +93,10 @@ export function ItemDrawer({ itemId, onClose }: { itemId: string; onClose: () =>
             <input className={inputCls} inputMode="decimal" placeholder={row ? (row.sticker / 100).toFixed(2) : ''} defaultValue={item.stickerOverrideCents === null ? '' : (item.stickerOverrideCents / 100).toFixed(2)}
               onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ stickerOverrideCents: null }); else { const c = parseMoney(v); if (c === null || c < 0) notify('Enter a valid sticker price', true); else edit({ stickerOverrideCents: c }) } }} />
           </label>
+          <label className={`${lbl} col-span-2`}>On the sticker now
+            <input className={inputCls} inputMode="decimal" placeholder="not stickered" defaultValue={item.stickeredPriceCents === null ? '' : (item.stickeredPriceCents / 100).toFixed(2)}
+              onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ stickeredPriceCents: null }); else { const c = parseMoney(v); if (c === null || c < 0) notify('Enter a valid price', true); else edit({ stickeredPriceCents: c }) } }} />
+          </label>
           <label className={`${lbl} col-span-2`}>Low stock at or below
             <input className={inputCls} inputMode="numeric" defaultValue={item.lowStockThreshold ?? ''} placeholder="off"
               onBlur={(e) => { const v = e.target.value.trim(); if (v === '') edit({ lowStockThreshold: null }); else { const n = Number(v); if (Number.isInteger(n) && n >= 0) edit({ lowStockThreshold: n }); else notify('Use a whole number, or blank to turn off', true) } }} />

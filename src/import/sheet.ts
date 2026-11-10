@@ -9,7 +9,7 @@ const eq = (a: string | undefined, b: string) => (a ?? '').trim().toLowerCase() 
 function baseRow(key: string, profileId: ProfileId, source: string): ImportRow {
   return {
     key, profileId, include: true, kind: 'single', game: 'Pokémon', name: '', setName: '', cardNumber: '', language: 'EN',
-    variant: '', condition: '', gradingCompany: '', grade: '', qty: 1, marketCents: null, stickerOverrideCents: null,
+    variant: '', condition: '', gradingCompany: '', grade: '', qty: 1, marketCents: null, stickerOverrideCents: null, stickeredCents: null,
     costCents: null, location: '', notes: [], source, blocking: [],
   }
 }
@@ -62,6 +62,7 @@ export function parseSheetGrid(grid: string[][], owners: ProfileId[] = ['p2', 'p
       } else {
         // When a quantity is in the name, the sheet's prices are totals for all copies.
         row.marketCents = p.qty > 1 ? Math.round(marketTotal / p.qty) : marketTotal
+        if (stickerTotal !== null) row.stickeredCents = p.qty > 1 ? stickerFromMarket(row.marketCents) : stickerTotal
         if (p.qty > 1) row.notes.push(`Price per card worked out from the total (${p.qty} cards)`)
         if (p.qty === 1 && stickerTotal !== null) {
           const computed = stickerFromMarket(marketTotal)

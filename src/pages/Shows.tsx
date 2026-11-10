@@ -38,7 +38,7 @@ export function ShowsPage() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
       <div className="mb-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Shows</h1>
         <button className={btnCls} onClick={() => setOpen(!open)}>{open ? 'Cancel' : 'New show'}</button>

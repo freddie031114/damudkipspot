@@ -66,7 +66,7 @@ export function parseGeneric(grid: string[][], mapping: Mapping, opts: GenericOp
       key: `g-${i}`, profileId: opts.profileId, include: true, kind: 'single', game: cell(r, 'game') || 'Pokémon', name,
       setName: cell(r, 'setName'), cardNumber: cell(r, 'cardNumber'), language: cell(r, 'language') || 'EN',
       variant: cell(r, 'variant'), condition: cell(r, 'condition'), gradingCompany: '', grade: '', qty: 1,
-      marketCents: null, stickerOverrideCents: null, costCents: null, location: cell(r, 'location'), notes: [],
+      marketCents: null, stickerOverrideCents: null, stickeredCents: null, costCents: null, location: cell(r, 'location'), notes: [],
       source: `Row ${i + 2}`, blocking: [],
     }
     const q = cell(r, 'qty')

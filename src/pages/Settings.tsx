@@ -38,6 +38,10 @@ function ProfileSettings({ p }: { p: ProfileId }) {
           <input className={inputCls} inputMode="numeric" defaultValue={s.stalePriceDays} key={s.stalePriceDays}
             onBlur={(e) => { const n = Number(e.target.value); if (!Number.isInteger(n) || n < 1) return notify('Use a whole number of days', true); if (n !== s.stalePriceDays) save({ stalePriceDays: n }) }} />
         </label>
+        <label className="text-xs font-medium">Re-sticker when the price moves more than (%)
+          <input className={inputCls} inputMode="numeric" defaultValue={s.restickerPct} key={s.restickerPct}
+            onBlur={(e) => { const n = Number(e.target.value); if (!Number.isFinite(n) || n < 0 || n > 100) return notify('Use a percentage from 0 to 100', true); if (n !== s.restickerPct) save({ restickerPct: n }) }} />
+        </label>
         <p className="self-end text-sm opacity-80">Example: market $35.00 → sticker <strong>{formatAud(example)}</strong></p>
       </div>
     </section>
@@ -58,7 +62,7 @@ export function SettingsPage() {
     downloadText(`damudkipspot-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ exportedAt: new Date().toISOString(), ...raw }, null, 2), 'application/json')
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
       <h1 className="mb-3 text-xl font-semibold">Settings</h1>
       <div className="mb-6 grid max-w-3xl gap-4 md:grid-cols-2">
         {PROFILE_IDS.map((p) => <ProfileSettings key={p} p={p} />)}

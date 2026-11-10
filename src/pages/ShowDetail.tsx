@@ -44,7 +44,7 @@ export function ShowDetail() {
 
   const s = summary
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <Link to="/shows" className="text-sm underline">‹ Shows</Link>
         <h1 className="text-xl font-semibold">{show.name}</h1>

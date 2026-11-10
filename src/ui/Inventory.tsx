@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { adjustStock, deleteItems, updateItem } from '../data/changes'
+import { adjustStock, deleteItems, markStickered, updateItem } from '../data/changes'
 import { matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
@@ -56,10 +56,11 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const ctx = useChangeCtx()
   const { openItem } = useUi()
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
+  const [onlySticker, setOnlySticker] = useState(false)
   const readOnly = view === 'all'
 
   const visible = useMemo(() => {
-    const list = rows.filter((r) => (view === 'all' || r.item.profileId === view) && matchesSearch(r.item, search))
+    const list = rows.filter((r) => (view === 'all' || r.item.profileId === view) && matchesSearch(r.item, search) && (!onlySticker || r.needsSticker))
     const val = (r: InventoryRow): string | number => {
       switch (sort.key) {
         case 'name': return r.item.name.toLowerCase()
@@ -74,7 +75,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
       const x = val(a), y = val(b)
       return (x < y ? -1 : x > y ? 1 : 0) * sort.dir || a.item.name.localeCompare(b.item.name)
     })
-  }, [rows, view, search, sort])
+  }, [rows, view, search, sort, onlySticker])
 
   const totals = useMemo(() => ({
     units: visible.reduce((n, r) => n + r.qty, 0),
@@ -82,6 +83,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
     sticker: visible.reduce((n, r) => n + r.qty * r.sticker, 0),
     known: visible.reduce((n, r) => n + r.knownCostCents, 0),
     unknown: visible.filter((r) => r.costUnknown).length,
+    resticker: rows.filter((r) => (view === 'all' || r.item.profileId === view) && r.needsSticker).length,
   }), [visible])
 
   const parentRef = useRef<HTMLDivElement>(null)
@@ -109,13 +111,17 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const allSelected = visible.length > 0 && visible.every((r) => selected.has(r.item.id))
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-4 border-b border-line px-4 py-1.5 text-sm" aria-label="Totals">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto">
+     <div className="flex min-h-0 min-w-[1000px] flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-1.5 text-sm" aria-label="Totals">
         <span><strong>{visible.length}</strong> items</span>
         <span><strong>{totals.units}</strong> units</span>
         <span>Market value <strong>{formatAud(totals.value)}</strong></span>
         <span>Sticker value <strong>{formatAud(totals.sticker)}</strong></span>
         <span className="opacity-70">Known cost {formatAud(totals.known)}{totals.unknown > 0 && ` (${totals.unknown} items with no cost recorded)`}</span>
+        {(totals.resticker > 0 || onlySticker) && (
+          <label className="flex items-center gap-1 text-accent-ink"><input type="checkbox" checked={onlySticker} onChange={(e) => setOnlySticker(e.target.checked)} /> Needs re-sticker ({totals.resticker})</label>
+        )}
         {readOnly && <span className="ml-auto rounded bg-chip px-2 py-0.5">Combined view is read-only</span>}
         {!readOnly && selected.size > 0 && (
           <span className="ml-auto flex items-center gap-2">
@@ -124,6 +130,10 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
               const items = rows.filter((r) => selected.has(r.item.id)).map((r) => r.item)
               apply(deleteItems(ctx(), items)); setSelected(new Set())
             }}>Delete</button>
+            <button className={ghostBtn} onClick={() => {
+              const chosen = rows.filter((r) => selected.has(r.item.id))
+              apply(markStickered(ctx(), chosen)); setSelected(new Set())
+            }}>Mark stickered</button>
           </span>
         )}
       </div>
@@ -143,7 +153,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
           {virt.getVirtualItems().map((v) => {
             const r = visible[v.index]!
             const it = r.item
-            const flags = [r.oversold > 0 && `Oversold ${r.oversold}`, r.lowStock && 'Low', r.stalePrice && 'Stale', r.costUnknown && 'No cost'].filter(Boolean) as string[]
+            const flags = [r.oversold > 0 && `Oversold ${r.oversold}`, r.lowStock && 'Low', r.needsSticker && 'Re-sticker', r.stalePrice && 'Stale', r.costUnknown && 'No cost'].filter(Boolean) as string[]
             return (
               <div key={it.id} role="row" className="group absolute left-0 grid w-full items-center gap-2 border-b border-line px-4 text-sm hover:bg-hover"
                 style={{ gridTemplateColumns: COLS, height: v.size, transform: `translateY(${v.start}px)` }}>
@@ -179,6 +189,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
           })}
         </div>
       </div>
+     </div>
     </div>
   )
 }

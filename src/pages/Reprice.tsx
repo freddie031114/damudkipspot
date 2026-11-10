@@ -36,7 +36,7 @@ export function RepricePage() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold">Reprice</h1>
         <span className="text-sm opacity-70">Oldest prices first. Type the new market price and press Enter to save and move to the next. Leave a row blank to skip it.</span>

@@ -128,7 +128,7 @@ export function addLot(ctx: Ctx, item: Item, qty: number, unitCostCents: number 
 
 export type ItemEdit = Partial<Pick<Item,
   'name' | 'setName' | 'setCode' | 'cardNumber' | 'language' | 'variant' | 'condition' | 'gradingCompany' | 'grade' |
-  'sealedType' | 'kind' | 'game' | 'marketPriceCents' | 'stickerOverrideCents' | 'location' | 'notes' | 'tags' | 'lowStockThreshold'>>
+  'sealedType' | 'kind' | 'game' | 'marketPriceCents' | 'stickerOverrideCents' | 'stickeredPriceCents' | 'location' | 'notes' | 'tags' | 'lowStockThreshold'>>
 
 /** Updates only the fields that actually changed; the audit entry keeps before/after. */
 export function updateItem(ctx: Ctx, before: Item, edit: ItemEdit): Change | null {
@@ -280,7 +280,7 @@ export function importItems(ctx: Ctx, rows: ImportRow[], filename: string): Chan
     const item = makeItem(ctx, {
       profileId: r.profileId, name, kind: r.kind, game: r.game, setName: r.setName, cardNumber: r.cardNumber,
       language: r.language, variant: r.variant, condition: r.condition, gradingCompany: r.gradingCompany, grade: r.grade,
-      marketPriceCents: r.marketCents!, stickerOverrideCents: r.stickerOverrideCents, location: r.location, importBatchId: batchId,
+      marketPriceCents: r.marketCents!, stickerOverrideCents: r.stickerOverrideCents, stickeredPriceCents: r.stickeredCents, location: r.location, importBatchId: batchId,
     })
     const lot = lotOp(ctx, item.id, item.profileId, r.qty, r.costCents, r.costCents === null ? 'opening' : 'import', batchId)
     ops.push({ collection: 'items', id: item.id, merge: false, data: item as unknown as Record<string, unknown>, atom: item.id })
@@ -494,4 +494,25 @@ export function updateSettings(ctx: Ctx, doc: ProfileDoc, patch: NonNullable<Pro
     ],
     inverse: (c) => [{ collection: 'profiles', id: doc.id, merge: true, data: { id: doc.id, settings: doc.settings ?? {}, ...stamp(c) } }, audit(c, 'settings', doc.id, 'undo-update', doc.id)],
   }
+}
+
+// ---------- combining changes ----------
+
+/** Joins several changes into one (one toast, one undo). Empty or null changes are skipped. */
+export function combineChanges(label: string, changes: (Change | null)[]): Change | null {
+  const real = changes.filter((c): c is Change => c !== null)
+  if (real.length === 0) return null
+  return {
+    label,
+    ops: real.flatMap((c) => c.ops),
+    inverse: (ctx) => [...real].reverse().flatMap((c) => c.inverse?.(ctx) ?? []),
+  }
+}
+
+/** Records that the chosen items now carry a sticker at their current sticker price. */
+export function markStickered(ctx: Ctx, rows: { item: Item; sticker: number }[]): Change | null {
+  return combineChanges(
+    rows.length === 1 ? `Marked ${rows[0]!.item.name} as stickered` : `Marked ${rows.length} items as stickered`,
+    rows.map((r) => updateItem(ctx, r.item, { stickeredPriceCents: r.sticker })),
+  )
 }

@@ -29,5 +29,6 @@ if (auth) void setPersistence(auth, browserLocalPersistence)
 export const db = app
   ? initializeFirestore(app, {
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      ignoreUndefinedProperties: true,
     })
   : null

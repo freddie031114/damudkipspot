@@ -63,7 +63,7 @@ export function SalesPage() {
     ]))
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
       <h1 className="mb-3 text-xl font-semibold">Sales</h1>
       <div className="mb-3 flex flex-wrap items-end gap-3" aria-label="Filters">
         <label className="text-xs">Stock of

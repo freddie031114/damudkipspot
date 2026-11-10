@@ -37,6 +37,7 @@ export function Dashboard() {
       unknownCostItems: priced.filter((r) => r.costUnknown).length,
       stale: priced.filter((r) => r.stalePrice).length,
       oversold: scoped.filter((r) => r.oversold > 0).length,
+      resticker: scoped.filter((r) => r.needsSticker).length,
     }
   }, [scoped])
 
@@ -77,7 +78,7 @@ export function Dashboard() {
   const title = view === 'all' ? 'Combined' : `${nameOf(view)}'s stock`
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
       <h1 className="mb-3 text-xl font-semibold">Dashboard · {title}</h1>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Tile label="Market value" value={formatAud(stats.market)} sub={`${stats.items} items, ${stats.units} units`} />
@@ -85,7 +86,7 @@ export function Dashboard() {
         <Tile label="Known cost" value={formatAud(stats.cost)} sub={stats.unknownCostItems ? `${stats.unknownCostItems} items have no cost recorded` : undefined} />
         <Tile label="Unrealised profit" value={formatAud(stats.unrealised)} sub="Items with a recorded cost only" />
         <Tile label="Sales, all time" value={formatAud(totals.revenueCents)} sub={`${totals.count} lines · profit ${formatAud(totals.profitCents)}`} />
-        <Tile label="Needs attention" value={String(stats.stale + stats.oversold + low.length)} sub={`${stats.stale} stale prices · ${low.length} low stock · ${stats.oversold} oversold`} />
+        <Tile label="Needs attention" value={String(stats.stale + stats.oversold + stats.resticker + low.length)} sub={`${stats.stale} stale · ${stats.resticker} re-sticker · ${low.length} low · ${stats.oversold} oversold`} />
       </div>
 
       <div className="mb-4 rounded-lg border border-line bg-surface p-3">
