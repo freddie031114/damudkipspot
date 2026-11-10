@@ -22,7 +22,7 @@ const DAY = 86_400_000
 export function Dashboard() {
   const { rows, raw } = useStore()
   const { view, openItem } = useUi()
-  const mine = useMemo(() => rows.filter((r) => r.item.profileId === view), [rows, view])
+  const mine = useMemo(() => rows.filter((r) => view === 'all' || r.item.profileId === view), [rows, view])
   const scoped = useMemo(() => mine.filter((r) => r.item.kind !== 'bulk'), [mine])
   const bulkCents = useMemo(() => mine.filter((r) => r.item.kind === 'bulk').reduce((n, r) => n + r.marketValueCents, 0), [mine])
 
@@ -77,7 +77,7 @@ export function Dashboard() {
   }, [log])
 
   const totals = useMemo(() => totalsOf(log), [log])
-  const title = `${nameOf(view)}'s stock`
+  const title = view === 'all' ? 'Combined stock' : `${nameOf(view)}'s stock`
 
   return (
     <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">

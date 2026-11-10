@@ -5,12 +5,14 @@ import { matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
 import { slabLabel } from '../domain/grade'
+import { DEFAULT_NAMES } from '../lib/profile'
 import { formatAud, parseMoney } from '../domain/money'
 import { btnCls, ghostBtn } from './common'
 import { SavedViews } from './SavedViews'
 import { useUi } from './UiContext'
 
-export type View = ProfileId
+/** One person's stock, or both together. */
+export type View = ProfileId | 'all'
 type SortKey = 'name' | 'qty' | 'market' | 'sticker' | 'value'
 const SORT_KEYS: SortKey[] = ['name', 'qty', 'market', 'sticker', 'value']
 
@@ -52,14 +54,15 @@ function EditableCell({ display, initial, onCommit, disabled, align = 'left', la
 }
 
 /** Bulk cards are just a lump-sum value per person, kept out of the card list. */
-function BulkChip({ profile }: { profile: ProfileId }) {
+function BulkChip({ profile }: { profile: View }) {
   const { rows, apply, notify } = useStore()
   const ctx = useChangeCtx()
-  const bulk = rows.filter((r) => r.item.kind === 'bulk' && r.item.profileId === profile)
+  const bulk = rows.filter((r) => r.item.kind === 'bulk' && (profile === 'all' || r.item.profileId === profile))
   const cents = bulk.reduce((n, r) => n + r.marketValueCents, 0)
   const first = bulk[0]
 
   function save(v: string) {
+    if (profile === 'all') return
     const c = parseMoney(v)
     if (c === null || c < 0) return notify('Enter a valid amount', true)
     if (c === cents) return
@@ -74,9 +77,9 @@ function BulkChip({ profile }: { profile: ProfileId }) {
   return (
     <span className="flex flex-col leading-tight" aria-label="Bulk cards">
       <strong className="text-lg font-semibold">
-        <EditableCell label="bulk cards value" initial={(cents / 100).toFixed(2)} display={formatAud(cents)} onCommit={save} />
+        <EditableCell label="bulk cards value" initial={(cents / 100).toFixed(2)} display={formatAud(cents)} onCommit={save} disabled={profile === 'all'} />
       </strong>
-      <span className="px-1 text-[11px] uppercase tracking-wider opacity-60">Bulk cards (click to edit)</span>
+      <span className="px-1 text-[11px] uppercase tracking-wider opacity-60">Bulk cards{profile === 'all' ? '' : ' (click to edit)'}</span>
     </span>
   )
 }
@@ -92,7 +95,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const [onlySticker, setOnlySticker] = useState(false)
 
   const visible = useMemo(() => {
-    const list = rows.filter((r) => r.item.kind !== 'bulk' && r.item.profileId === view && matchesSearch(r.item, search) && (!onlySticker || r.needsSticker))
+    const list = rows.filter((r) => r.item.kind !== 'bulk' && (view === 'all' || r.item.profileId === view) && matchesSearch(r.item, search) && (!onlySticker || r.needsSticker))
     const val = (r: InventoryRow): string | number => {
       switch (sort.key) {
         case 'name': return r.item.name.toLowerCase()
@@ -114,7 +117,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
     sticker: visible.reduce((n, r) => n + r.qty * r.sticker, 0),
     known: visible.reduce((n, r) => n + r.knownCostCents, 0),
     unknown: visible.filter((r) => r.costUnknown).length,
-    resticker: rows.filter((r) => r.item.profileId === view && r.needsSticker).length,
+    resticker: rows.filter((r) => (view === 'all' || r.item.profileId === view) && r.needsSticker).length,
   }), [visible])
 
   const parentRef = useRef<HTMLDivElement>(null)
@@ -198,6 +201,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
                 <input type="checkbox" aria-label={`Select ${it.name}`} checked={selected.has(it.id)}
                   onChange={() => { const s = new Set(selected); if (s.has(it.id)) s.delete(it.id); else s.add(it.id); setSelected(s) }} />
                 <div className="flex min-w-0 items-center gap-2">
+                  {view === 'all' && <span className={`shrink-0 rounded-full px-1.5 text-[11px] font-semibold ${it.profileId === 'p1' ? 'bg-brand/15 text-brand' : 'bg-accent/20 text-accent-ink'}`} title={`${DEFAULT_NAMES[it.profileId]}'s stock`}>{DEFAULT_NAMES[it.profileId]}</span>}
                   <div className="max-w-[55%] shrink-0 font-medium">
                     <EditableCell label={`name of ${it.name}`} initial={it.name} display={it.name}
                       onCommit={(v) => run(() => updateItem(ctx(), it, { name: v.trim() }))} />

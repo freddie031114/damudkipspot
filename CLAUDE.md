@@ -12,7 +12,8 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 | Cross-profile access | **Always editable.** Either person can view and edit either profile's inventory, sales and prices. No read-only mode, no per-profile toggle. |
 | Attribution | Every row and audit entry records the acting profile chosen in the app (not tamper-proof, since the login is shared). Sales also record who sold it and whose stock it was. |
 | Selling each other's stock | Allowed any time (follows from "always editable"). Stock and revenue belong to the item's owner; the sale records the seller. |
-| Combined view | **Removed** at the owner's request. Each person's stock is viewed one at a time (Freddie / Ferrell switch in the sidebar). |
+| Combined view | Back at the owner's request (it was removed once, then restored). The sidebar has Freddie / Ferrell / Combined (keys `1` `2` `3`). Combined merges both people's stock with an owner tag on each row, and rows stay editable like everything else. Quick add in Combined puts new stock under the acting profile. Dashboard and Reprice follow the same switch. |
+| Expenses | A dedicated Expenses page tracks every cost the two split (table fees, travel, food, supplies, postage). Show costs and general costs live in the same `showExpenses` collection; `showId` is null for costs outside a show. Each cost records who paid and the split (equal by default, custom % optional). The page shows who owes whom on unsettled costs; "Settle up" marks them settled. |
 | Names | Profile `p1` is **Freddie** (the owner), `p2` is **Ferrell** (the friend). The site is branded **damudkipspot** with a Mudkip theme. |
 | Pricing | **All prices entered manually, in AUD.** No pokemontcg.io, no FX conversion in v1. |
 | Sticker price | Sticker (asking) price = market price × 1.10. The multiplier is a setting per profile. |
@@ -102,7 +103,7 @@ Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (
 - **adjustments**: `itemId`, `qtyDelta`, `reason` (damaged / lost / kept / count correction / found), `note`.
 - **priceHistory**: `itemId`, `marketPriceCents`, `recordedAt`, `recordedBy`, `source`. Written in the same batch as any market price change.
 - **shows**: `name`, `startsOn`, `endsOn`, `venue`, `tableFeeCents`, `status` (planned / live / closed), `notes`, `participants[]` (`profileId`, `openingFloatCents`, `closingCashCents`).
-- **showExpenses**: `showId`, `description`, `amountCents`, `paidByProfileId`, `split` (equal / custom), `splitPct`.
+- **showExpenses**: `showId` (nullable: null = not tied to a show), `description`, `category` (Table fee / Travel / Food / Supplies / Postage / Other; older records have none), `incurredOn` (YYYY-MM-DD), `amountCents`, `paidByProfileId`, `splitPct`, `settledAt` (nullable). Settled costs no longer count towards what is owed. Show settlement still counts every cost on the show, settled or not.
 - **savedViews**: `profileId`, `name`, `screen`, `config`.
 - **importBatches**: `profileId`, `filename`, `mapping`, `rowCount`, `undoneAt`.
 - **auditLog**: `at`, `actorProfileId`, `targetProfileId`, `entity`, `entityId`, `action`, `diff` (before/after), `showId`. Create-only.
@@ -119,7 +120,7 @@ Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (
 ## Screens
 
 1. **Login.**
-2. **Inventory** (home). Virtualised dense table, inline cell editing, column sort/filter/show/hide, multi-select with bulk delete / mark stickered, saved views, profile switcher (Freddie / Ferrell). Flags column: low stock, stale price, needs re-sticker, oversold.
+2. **Inventory** (home). Virtualised dense table, inline cell editing, column sort/filter/show/hide, multi-select with bulk delete / mark stickered, saved views, profile switcher (Freddie / Ferrell / Combined). Flags column: low stock, stale price, needs re-sticker, oversold.
 3. **Item drawer.** All fields, lots (add / edit / remaining), price history chart, sales of this item, audit trail, photo.
 4. **Quick add.** Modal with type-ahead from existing items (same card → add a lot instead of a duplicate row). Enter to save and add another.
 5. **Quick sell.** Search → item → price pre-filled from sticker → payment method → Enter. Can add more lines for a bundle, apply a bundle discount, split payment. Optional Trade-in section for cards the customer hands over. Toast with Undo.
@@ -128,16 +129,17 @@ Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (
 8. **Shows.** List and detail: fee, expenses, participants, float.
 9. **Show mode.** Full-screen: large search bar, quick sell, running takings (total and per payment method, per profile), recent sales with undo, "selling as" switch, sync status.
 10. **Show summary.** Sales, revenue, cost and profit per profile; expense split; cash reconciliation (float + cash sales vs counted); settlement showing who owes whom, including money one person collected for the other's stock.
-11. **Dashboard** (per profile). Market value, cost, unrealised profit, top movers, low stock, recent sales, stale prices, sell-through.
+11. **Dashboard** (per profile, or combined). Market value, cost, unrealised profit, top movers, low stock, recent sales, stale prices, sell-through.
 12. **Reports.** Sales log filterable by profile / show / date range / payment method; a Trades tab (what went out, what came in, credit, cash difference); profit per card; Australian financial year presets (1 July – 30 June); CSV export.
-13. **Audit log.** Filterable by actor, profile, entity, date.
-14. **Trash.** Soft-deleted items, lots and voided sales with restore.
-15. **Settings.** Profile, sticker multiplier and rounding, thresholds, theme, data export.
-16. **Shortcut cheat sheet** (`?`) and **command palette** (`Ctrl+K`).
+13. **Expenses.** Add a cost (category, amount, date, who paid, optional show, equal or custom split); list with filters by show and category; balance ("Ferrell owes Freddie $X") on unsettled costs; Settle up (undoable); CSV export. Table fees entered on a show appear here too.
+14. **Audit log.** Filterable by actor, profile, entity, date.
+15. **Trash.** Soft-deleted items, lots and voided sales with restore.
+16. **Settings.** Profile, sticker multiplier and rounding, thresholds, theme, data export.
+17. **Shortcut cheat sheet** (`?`) and **command palette** (`Ctrl+K`).
 
 ### Keyboard shortcuts
 
-`/` search · `N` add item · `S` quick sell · `Ctrl+Z` undo · `Ctrl+K` command palette · `?` cheat sheet · `G I` / `G D` / `G S` / `G R` go to inventory / dashboard / shows / reports · `1` `2` switch whose stock you are viewing · arrows + `Enter` to move and edit cells · `Esc` cancel · `X` select row · `Del` delete selected. Single-key shortcuts are disabled while a text field has focus.
+`/` search · `N` add item · `S` quick sell · `Ctrl+Z` undo · `Ctrl+K` command palette · `?` cheat sheet · `G I` / `G D` / `G S` / `G R` / `G E` go to inventory / dashboard / shows / reports / expenses · `1` `2` `3` view Freddie's, Ferrell's or both people's stock · arrows + `Enter` to move and edit cells · `Esc` cancel · `X` select row · `Del` delete selected. Single-key shortcuts are disabled while a text field has focus.
 
 ### Undo
 
@@ -194,10 +196,10 @@ Migration approach:
 - Pure domain logic with tests: money, sticker price and rounding, FIFO stock and cost, sales, carts, show takings, profit and settlement, reports, Australian financial years, safe CSV export.
 - Write builders (change + audit entry + undo): items, lots, adjustments, sales and voids, shows, expenses, settings, bulk import, combined changes.
 - Firestore layer (persistent offline cache, atomic batches) and an in-memory twin used for demos and UI tests.
-- Screens: Inventory (virtual table, inline edit, saved views, bulk delete/move/mark stickered), item drawer (details, lots with editable cost, price chart, sales, history), quick add, quick sell, Show mode (cart, bundle discount, payment methods, takings, void), Shows and show detail (float, cash count, shared costs, profit, settlement), Dashboard, Sales log and profit per card with CSV export, Reprice, Trash, Audit log, Settings and backups, Import wizard, command palette (`Ctrl+K`), shortcut sheet.
+- Screens: Inventory (virtual table, inline edit, saved views, bulk delete/move/mark stickered), item drawer (details, lots with editable cost, price chart, sales, history), quick add, quick sell, Show mode (cart, bundle discount, payment methods, takings, void), Shows and show detail (float, cash count, shared costs, profit, settlement), Dashboard, Sales log and profit per card with CSV export, Expenses (split and settle up), Reprice, Trash, Audit log, Settings and backups, Import wizard, command palette (`Ctrl+K`), shortcut sheet.
 - Spreadsheet import: parses the two-block Google Sheet, cross-checks against its printed totals, imports as opening stock with unknown cost, one-click undo. Generic CSV import with column mapping and a price multiplier (Collectr-style headers are guessed; the real Collectr export has not been checked).
 - Offline: service worker precaches the app (tested: reload and deep links open with no connection). Updates wait for a click so a sale is never interrupted.
-- Look: dark pond-navy sidebar with icons, slim top bar with search and actions, rounded cards with soft shadows, Mudkip palette, light and dark. Combined view removed.
+- Look: dark pond-navy sidebar with icons, slim top bar with search and actions, rounded cards with soft shadows, Mudkip palette, light and dark. Combined view restored.
 - Tests: 140+ unit tests (`npm test`), 15 Firestore rules tests against the emulator (`npm run test:rules`, needs Java), CI workflow runs both.
 - Firebase project `damudkipspot-a430f`: Firestore (australia-southeast1) created, rules deployed, Google sign-in enabled, Vercel domains authorised. Vercel project has the `VITE_FIREBASE_*` variables and deploys on every push.
 

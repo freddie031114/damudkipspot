@@ -136,8 +136,15 @@ export interface Show extends Base {
   deletedAt: number | null
 }
 
+/** A cost the two people split. Show costs (like the table fee) have a showId; others do not. */
 export interface ShowExpense extends Base {
-  showId: string
+  showId: string | null
+  /** Table fee, Travel, Food, Supplies, Postage or Other (older records have none). */
+  category?: string
+  /** The day the money was spent, YYYY-MM-DD (older records fall back to when they were entered). */
+  incurredOn?: string
+  /** Set when the two have squared up over this cost; settled costs no longer count towards what is owed. */
+  settledAt?: number | null
   description: string
   amountCents: number
   paidByProfileId: ProfileId

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { quickSale } from '../domain/sale'
 import { summarizeShow } from '../domain/show'
 import {
-  addExpense, createItem, createShow, deleteExpense, deleteLot, recordSale, setParticipant, updateLot, updateSettings, updateShow,
+  addExpense, createItem, createShow, deleteExpense, deleteLot, recordSale, setParticipant, settleExpenses, updateLot, updateSettings, updateShow,
 } from './changes'
 import { buildInventory, saleLineCosts, settingsFor } from './derive'
 import { memorySource } from './memorySource'
@@ -109,5 +109,43 @@ describe('lot cost edits and settings', () => {
     expect(rows.find((r) => r.item.name === 'A')!.sticker).toBe(4000)
     expect(rows.find((r) => r.item.name === 'B')!.sticker).toBe(3900)
     expect(() => updateSettings(ctx(), { id: 'p1' }, { multiplierPermille: 100 })).toThrow('between')
+  })
+})
+
+describe('general expenses and settling up', () => {
+  it('a cost can belong to no show, and records its category and date', async () => {
+    const src = memorySource()
+    await src.commit(addExpense(ctx(), null, { description: 'Toploaders', amountCents: 2500, paidBy: 'p2', category: 'Supplies', incurredOn: '2026-11-01' }).ops)
+    expect(src.data.showExpenses[0]).toMatchObject({ showId: null, category: 'Supplies', incurredOn: '2026-11-01', paidByProfileId: 'p2', splitPct: { p1: 50, p2: 50 }, settledAt: null })
+  })
+
+  it('defaults to Other and today, and rejects a bad date', () => {
+    const c = addExpense(ctx('p1', new Date(2026, 10, 9, 12).getTime()), null, { description: 'Parking', amountCents: 800, paidBy: 'p1' })
+    expect(c.ops[0]!.data).toMatchObject({ category: 'Other', incurredOn: '2026-11-09' })
+    expect(() => addExpense(ctx(), null, { description: 'x', amountCents: 100, paidBy: 'p1', incurredOn: '9/11/2026' })).toThrow('valid date')
+  })
+
+  it('the table fee is categorised and dated to the show', async () => {
+    const src = memorySource()
+    await src.commit(createShow(ctx(), { name: 'S', startsOn: '2026-12-05', endsOn: '2026-12-05', venue: '', tableFeeCents: 9000 }).ops)
+    expect(src.data.showExpenses[0]).toMatchObject({ category: 'Table fee', incurredOn: '2026-12-05' })
+  })
+
+  it('settling marks open costs settled in one change, and undo reopens them', async () => {
+    const src = memorySource()
+    await src.commit(addExpense(ctx(), null, { description: 'A', amountCents: 1000, paidBy: 'p1' }).ops)
+    await src.commit(addExpense(ctx(), null, { description: 'B', amountCents: 2000, paidBy: 'p2' }).ops)
+    const c = settleExpenses(ctx('p2', 5000), src.data.showExpenses)!
+    expect(c.label).toBe('Settled 2 costs')
+    await src.commit(c.ops)
+    expect(src.data.showExpenses.every((e) => e.settledAt === 5000)).toBe(true)
+    expect(settleExpenses(ctx(), src.data.showExpenses)).toBeNull()
+    await src.commit(c.inverse!(ctx('p2', 6000)))
+    expect(src.data.showExpenses.every((e) => e.settledAt === null)).toBe(true)
+  })
+
+  it('removed costs are left alone when settling', () => {
+    const e = { id: 'x', deletedAt: 1, settledAt: null, amountCents: 100 } as never
+    expect(settleExpenses(ctx(), [e])).toBeNull()
   })
 })

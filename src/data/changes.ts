@@ -3,6 +3,7 @@
  * change AND its audit entry together) plus an optional inverse for undo. Nothing here
  * touches Firebase, so it is fully testable and identical online and offline.
  */
+import { isoDay } from '../domain/expenses'
 import { saleTotals, tradeCreditCents, validateSale, type SaleDraft, type SaleTradeIn } from '../domain/sale'
 import type { Adjustment, Item, Lot, ProfileDoc, ProfileId, Sale, Show, ShowExpense, WriteOp } from './types'
 import { NEW_ITEM_DEFAULTS, type NewItem } from './types'
@@ -390,11 +391,19 @@ export function deleteLot(ctx: Ctx, lot: Lot, itemName = 'item'): Change {
 
 const EVEN: Record<ProfileId, number> = { p1: 50, p2: 50 }
 
-function expenseDoc(ctx: Ctx, showId: string, description: string, amountCents: number, paidBy: ProfileId, splitPct: Record<ProfileId, number>): ShowExpense {
+function expenseDoc(
+  ctx: Ctx, showId: string | null, description: string, amountCents: number, paidBy: ProfileId, splitPct: Record<ProfileId, number>,
+  extra: { category?: string; incurredOn?: string } = {},
+): ShowExpense {
   if (!description.trim()) throw new Error('Describe the expense')
   if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error('Expense amount must be more than zero')
   if (splitPct.p1 + splitPct.p2 !== 100 || splitPct.p1 < 0 || splitPct.p2 < 0) throw new Error('The split must add up to 100%')
-  return { id: ctx.newId(), showId, description: description.trim(), amountCents, paidByProfileId: paidBy, splitPct, deletedAt: null, ...born(ctx) }
+  const incurredOn = extra.incurredOn || isoDay(ctx.now)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(incurredOn)) throw new Error('Enter a valid date')
+  return {
+    id: ctx.newId(), showId, description: description.trim(), amountCents, paidByProfileId: paidBy, splitPct,
+    category: extra.category || 'Other', incurredOn, settledAt: null, deletedAt: null, ...born(ctx),
+  }
 }
 
 export interface NewShow {
@@ -417,7 +426,7 @@ export function createShow(ctx: Ctx, input: NewShow): Change & { showId: string 
   const ops: WriteOp[] = []
   let feeId: string | null = null
   if (input.tableFeeCents > 0) {
-    const fee = expenseDoc(ctx, id, 'Table fee', input.tableFeeCents, input.feePaidBy ?? ctx.actor, EVEN)
+    const fee = expenseDoc(ctx, id, 'Table fee', input.tableFeeCents, input.feePaidBy ?? ctx.actor, EVEN, { category: 'Table fee', incurredOn: input.startsOn })
     feeId = fee.id
     ops.push({ collection: 'showExpenses', id: fee.id, merge: false, data: fee as unknown as Record<string, unknown> })
   }
@@ -460,7 +469,7 @@ export function updateShow(ctx: Ctx, before: Show, edit: ShowEdit): Change | nul
     if (before.feeExpenseId) {
       ops.push({ collection: 'showExpenses', id: before.feeExpenseId, merge: true, data: { amountCents: fee, deletedAt: (fee as number) === 0 ? ctx.now : null, ...stamp(ctx) } })
     } else if ((fee as number) > 0) {
-      const e = expenseDoc(ctx, before.id, 'Table fee', fee as number, ctx.actor, EVEN)
+      const e = expenseDoc(ctx, before.id, 'Table fee', fee as number, ctx.actor, EVEN, { category: 'Table fee', incurredOn: before.startsOn })
       changed.feeExpenseId = e.id
       ops.push({ collection: 'showExpenses', id: e.id, merge: false, data: e as unknown as Record<string, unknown> })
     }
@@ -498,8 +507,12 @@ export function setParticipant(ctx: Ctx, show: Show, profileId: ProfileId, patch
   }
 }
 
-export function addExpense(ctx: Ctx, showId: string, input: { description: string; amountCents: number; paidBy: ProfileId; splitPct?: Record<ProfileId, number> }): Change {
-  const e = expenseDoc(ctx, showId, input.description, input.amountCents, input.paidBy, input.splitPct ?? EVEN)
+/** Adds a cost to split. `showId` is null for costs that belong to no particular show. */
+export function addExpense(
+  ctx: Ctx, showId: string | null,
+  input: { description: string; amountCents: number; paidBy: ProfileId; splitPct?: Record<ProfileId, number>; category?: string; incurredOn?: string },
+): Change {
+  const e = expenseDoc(ctx, showId, input.description, input.amountCents, input.paidBy, input.splitPct ?? EVEN, { category: input.category, incurredOn: input.incurredOn })
   return {
     label: `Added expense ${e.description}`,
     ops: [
@@ -507,6 +520,19 @@ export function addExpense(ctx: Ctx, showId: string, input: { description: strin
       audit(ctx, 'expense', e.id, 'create', input.paidBy, { showId, amountCents: e.amountCents }),
     ],
     inverse: (c) => [{ collection: 'showExpenses', id: e.id, merge: true, data: { deletedAt: c.now, ...stamp(c) } }, audit(c, 'expense', e.id, 'undo-create', input.paidBy)],
+  }
+}
+
+/** Marks costs as squared up between the two people. Undo makes them owed again. */
+export function settleExpenses(ctx: Ctx, expenses: ShowExpense[]): Change | null {
+  const open = expenses.filter((e) => !e.deletedAt && !e.settledAt)
+  if (open.length === 0) return null
+  const set = (c: Ctx, value: number | null): WriteOp[] => open.map((e) => ({ collection: 'showExpenses', id: e.id, merge: true, data: { settledAt: value, ...stamp(c) } }))
+  const total = open.reduce((n, e) => n + e.amountCents, 0)
+  return {
+    label: `Settled ${open.length} cost${open.length === 1 ? '' : 's'}`,
+    ops: [...set(ctx, ctx.now), audit(ctx, 'expense', open[0]!.id, 'settle', ctx.actor, { count: open.length, totalCents: total })],
+    inverse: (c) => [...set(c, null), audit(c, 'expense', open[0]!.id, 'undo-settle', ctx.actor)],
   }
 }
 

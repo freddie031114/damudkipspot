@@ -3,7 +3,7 @@ import { ghostBtn } from './common'
 
 export interface SavedView {
   name: string
-  view: 'p1' | 'p2'
+  view: 'p1' | 'p2' | 'all'
   search: string
   sortKey: string
   sortDir: 1 | -1
@@ -16,7 +16,7 @@ function load(): SavedView[] {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '[]') as unknown
     return Array.isArray(raw)
-      ? (raw as SavedView[]).filter((v) => v && typeof v.name === 'string').map((v) => (v.view === 'p1' || v.view === 'p2' ? v : { ...v, view: 'p1' as const }))
+      ? (raw as SavedView[]).filter((v) => v && typeof v.name === 'string').map((v) => (v.view === 'p1' || v.view === 'p2' || v.view === 'all' ? v : { ...v, view: 'p1' as const }))
       : []
   } catch {
     return []

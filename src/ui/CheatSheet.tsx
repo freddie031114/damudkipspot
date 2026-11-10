@@ -2,8 +2,8 @@ import { Modal } from './common'
 
 const KEYS: [string, string][] = [
   ['Ctrl+K', 'Command palette: any screen, action or card'], ['/', 'Search'], ['N', 'Add stock'], ['S', 'Quick sell'], ['Ctrl+Z', 'Undo last change'],
-  ['G then I D S R P T A', 'Go to Inventory, Dashboard, Shows, Sales, Reprice, Trash, Audit'],
-  ['1 / 2', "View Freddie's / Ferrell's stock"], ['Delete', 'Delete selected items'],
+  ['G then I D S R E P T A', 'Go to Inventory, Dashboard, Shows, Sales, Expenses, Reprice, Trash, Audit'],
+  ['1 / 2 / 3', "View Freddie's / Ferrell's / both people's stock"], ['Delete', 'Delete selected items'],
   ['Enter', 'Edit focused cell, or confirm'], ['Esc', 'Cancel edit / close'], ['↑ ↓ Enter', 'Move and pick in quick sell'],
   ['Ctrl+1–3', 'Payment for the balance: cash, card, PayID'], ['Ctrl+Enter', 'Complete the sale in Show mode'], ['?', 'This cheat sheet'],
 ]

@@ -18,7 +18,7 @@ export function RepricePage() {
   const list = useMemo(
     () =>
       rows
-        .filter((r) => r.item.profileId === view && r.item.kind !== 'bulk' && r.qty > 0 && (!onlyStale || r.stalePrice))
+        .filter((r) => (view === 'all' || r.item.profileId === view) && r.item.kind !== 'bulk' && r.qty > 0 && (!onlyStale || r.stalePrice))
         .sort((a, b) => a.item.marketPriceUpdatedAt - b.item.marketPriceUpdatedAt)
         .slice(0, 300),
     [rows, view, onlyStale],

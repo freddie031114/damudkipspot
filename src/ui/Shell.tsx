@@ -26,6 +26,7 @@ const SalesPage = lazy(() => import('../pages/Sales').then((m) => ({ default: m.
 const TrashPage = lazy(() => import('../pages/Trash').then((m) => ({ default: m.TrashPage })))
 const AuditPage = lazy(() => import('../pages/Audit').then((m) => ({ default: m.AuditPage })))
 const SettingsPage = lazy(() => import('../pages/Settings').then((m) => ({ default: m.SettingsPage })))
+const ExpensesPage = lazy(() => import('../pages/Expenses').then((m) => ({ default: m.ExpensesPage })))
 const RepricePage = lazy(() => import('../pages/Reprice').then((m) => ({ default: m.RepricePage })))
 
 function UpdateBanner() {
@@ -74,6 +75,7 @@ const NAV: { to: string; label: string; icon: keyof typeof Icon; end?: boolean }
   { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   { to: '/shows', label: 'Shows', icon: 'shows' },
   { to: '/sales', label: 'Sales', icon: 'sales' },
+  { to: '/expenses', label: 'Expenses', icon: 'expenses' },
   { to: '/reprice', label: 'Reprice', icon: 'reprice' },
   { to: '/trash', label: 'Trash', icon: 'trash' },
   { to: '/audit', label: 'Audit log', icon: 'audit' },
@@ -81,7 +83,7 @@ const NAV: { to: string; label: string; icon: keyof typeof Icon; end?: boolean }
 ]
 
 // "g" then a letter jumps to a screen.
-const GO: Record<string, string> = { i: '/', d: '/dashboard', s: '/shows', r: '/sales', p: '/reprice', t: '/trash', a: '/audit' }
+const GO: Record<string, string> = { i: '/', d: '/dashboard', s: '/shows', r: '/sales', e: '/expenses', p: '/reprice', t: '/trash', a: '/audit' }
 
 const DOT: Record<ProfileId, string> = { p1: 'bg-brand', p2: 'bg-accent' }
 
@@ -124,6 +126,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
       else if (e.key === '?') setModal({ kind: 'keys' })
       else if (e.key === '1') setView('p1')
       else if (e.key === '2') setView('p2')
+      else if (e.key === '3') setView('all')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -165,6 +168,10 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
                       <span className={`h-2 w-2 rounded-full ${DOT[p]}`} />{DEFAULT_NAMES[p]}<span className="text-[10px] opacity-50">{i + 1}</span>
                     </button>
                   ))}
+                  <button aria-pressed={view === 'all'} onClick={() => setView('all')}
+                    className={`col-span-2 flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm transition-colors ${view === 'all' ? 'bg-white/15 font-semibold text-white shadow-sm' : 'hover:bg-white/10'}`}>
+                    <span className="flex"><span className={`h-2 w-2 rounded-full ${DOT.p1}`} /><span className={`-ml-0.5 h-2 w-2 rounded-full ${DOT.p2}`} /></span>Combined<span className="text-[10px] opacity-50">3</span>
+                  </button>
                 </div>
               </div>
 
@@ -225,7 +232,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
                     </NavLink>
                   ))}
                   <span className="ml-auto flex shrink-0 items-center gap-1">
-                    {PROFILE_IDS.map((p) => <button key={p} aria-pressed={view === p} onClick={() => setView(p)} className={`rounded-lg px-3 py-1.5 text-sm ${view === p ? 'bg-brand text-brand-fg' : 'hover:bg-hover'}`}>{DEFAULT_NAMES[p]}</button>)}
+                    {([...PROFILE_IDS, 'all'] as View[]).map((p) => <button key={p} aria-pressed={view === p} onClick={() => setView(p)} className={`rounded-lg px-3 py-1.5 text-sm ${view === p ? 'bg-brand text-brand-fg' : 'hover:bg-hover'}`}>{p === 'all' ? 'Combined' : DEFAULT_NAMES[p]}</button>)}
                   </span>
                 </nav>
               </header>
@@ -239,6 +246,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
                 <Route path="/shows/:id" element={<ShowDetail />} />
                 <Route path="/show/:id" element={<ShowMode />} />
                 <Route path="/sales" element={<SalesPage />} />
+                <Route path="/expenses" element={<ExpensesPage />} />
                 <Route path="/reprice" element={<RepricePage />} />
                 <Route path="/trash" element={<TrashPage />} />
                 <Route path="/audit" element={<AuditPage />} />
@@ -249,7 +257,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
           </div>
         </div>
 
-        {modal?.kind === 'add' && <QuickAdd owner={view} onClose={() => setModal(null)} />}
+        {modal?.kind === 'add' && <QuickAdd owner={view === 'all' ? (acting ?? 'p1') : view} onClose={() => setModal(null)} />}
         {modal?.kind === 'sell' && <QuickSell initial={modal.row} onClose={() => setModal(null)} />}
         {modal?.kind === 'keys' && <CheatSheet onClose={() => setModal(null)} />}
         {modal?.kind === 'palette' && <CommandPalette onClose={() => setModal(null)} />}
