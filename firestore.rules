@@ -1,13 +1,20 @@
 rules_version = '2';
 
-// Both people share ONE login, so these rules keep outsiders out. They cannot separate
+// The two people share the data, so these rules keep outsiders out. They cannot separate
 // the two profiles from each other (see CLAUDE.md).
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Approved Google accounts (the shared login and the owners' own accounts).
+    // Sign-in is open to anyone, but only these verified emails can read or write data.
+    function approvedEmails() {
+      return ['damudkipspot@gmail.com', 'freddiechang918@gmail.com'];
+    }
+
     function isOwner() {
       return request.auth != null
-        && request.auth.token.email == 'damudkipspot@gmail.com';
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in approvedEmails();
     }
 
     function validProfile(id) { return id in ['p1', 'p2']; }

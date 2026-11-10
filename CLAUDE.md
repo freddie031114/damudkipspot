@@ -8,7 +8,7 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 
 | Topic | Decision |
 |---|---|
-| Users | Two people share **one login** (`damudkipspot@gmail.com`) and each use their own profile (`p1` owner, `p2` friend), chosen in-app. |
+| Users | Two people use the app, each as their own profile (`p1` owner, `p2` friend), chosen in-app. Sign-in is **Google** (open to any account), but data access is limited to an approved email list in `firestore.rules`. |
 | Cross-profile access | **Always editable.** Either person can view and edit either profile's inventory, sales and prices. No read-only mode, no per-profile toggle. |
 | Attribution | Every row and audit entry records the acting profile chosen in the app (not tamper-proof, since the login is shared). Sales also record who sold it and whose stock it was. |
 | Selling each other's stock | Allowed any time (follows from "always editable"). Stock and revenue belong to the item's owner; the sale records the seller. |
@@ -16,7 +16,7 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 | Pricing | **All prices entered manually, in AUD.** No pokemontcg.io, no FX conversion in v1. |
 | Sticker price | Sticker (asking) price = market price × 1.10. The multiplier is a setting per profile. |
 | Cost basis | **Purchase lots, FIFO.** Each purchase is a lot with its own unit cost and date; sales consume the oldest lot first. |
-| Auth / backend | Firebase Auth email + password, Cloud Firestore, free Spark plan, no Cloud Functions. Hosted on Vercel. |
+| Auth / backend | Firebase Auth with Google sign-in, Cloud Firestore, free Spark plan, no Cloud Functions. Hosted on Vercel. |
 | Money | Integer cents everywhere, AUD only. No floats. |
 | Deletes | Soft delete only (`deleted_at`). No hard deletes through the API. |
 
@@ -106,7 +106,7 @@ Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (
 
 ### Security rules
 
-- Only the shared login can read or write anything: `request.auth.token.email == 'damudkipspot@gmail.com'`. Everyone else, including other signed-in Firebase users, gets nothing.
+- Sign-in is open (anyone can sign in with Google), but only **approved, verified emails** listed in `firestore.rules` (`approvedEmails()`) can read or write data. Everyone else who signs in sees nothing. To add a person, add their Google email there and redeploy the rules.
 - No `delete` on any collection. `auditLog` is create-only (no update).
 - Sales: after creation, only `voidedAt` / `voidedBy` may change.
 - Light validation on writes (money fields are integers, `profileId` is `p1` or `p2`).
@@ -189,7 +189,8 @@ Migration approach:
 
 - Done: scaffold; pure domain logic with tests (money, sticker, FIFO, sales); pure change builders with audit entries and undo (tests); Firestore source and in-memory source; app store with undo stack and offline status; login; acting-profile switch; inventory table (virtualised, search, sort, inline edit, soft delete, combined read-only view); quick add with duplicate detection; quick sell with undo; keyboard shortcuts and cheat sheet. Browser-checked in demo mode (`npm run dev`, open `/?demo`, dev builds only).
 - Not yet done: Firestore rules tests (needs the Firebase emulator download), Vercel deploy, item drawer with lots and price-history chart, Trash screen, audit log screen, multi-line sales, import wizard and sheet migration, shows and Show mode, dashboard, reports, saved views, PWA service worker.
-- Not verified against live Firebase yet: sign-in, snapshots, and deployed rules.
+- Firebase project `damudkipspot-a430f` is set up: Firestore (australia-southeast1) created, rules deployed, Google sign-in enabled, Vercel domains authorised. Vercel project has the `VITE_FIREBASE_*` env vars.
+- Not verified against live Firebase yet: a real sign-in, snapshots and writes.
 
 ## Build order
 

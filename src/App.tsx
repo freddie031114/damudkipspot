@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth'
 import { auth, db, firebaseReady, missingFirebaseConfig } from './lib/firebase'
 import { firestoreSource } from './data/firestoreSource'
 import { demoSource } from './data/demoSeed'
@@ -14,7 +14,6 @@ import { isTyping } from './ui/common'
 import { DEFAULT_NAMES, PROFILE_IDS, useActingProfile } from './lib/profile'
 
 const card = 'mx-auto mt-24 max-w-md rounded-lg border border-slate-300 p-6 dark:border-slate-700'
-const input = 'w-full rounded border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-600'
 const button = 'rounded bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-500 disabled:opacity-50'
 const btnCls = 'rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50'
 const ghostBtn = 'rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-40 dark:border-slate-600 dark:hover:bg-slate-800'
@@ -34,36 +33,35 @@ function SetupNeeded() {
 }
 
 function Login() {
-  const [email, setEmail] = useState('damudkipspot@gmail.com')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  async function submit(e: FormEvent) {
-    e.preventDefault()
+  async function google() {
     setBusy(true)
     setError('')
     try {
-      await signInWithEmailAndPassword(auth!, email, password)
-    } catch {
-      setError('Sign in failed. Check the password, and that you are online the first time.')
+      await signInWithPopup(auth!, new GoogleAuthProvider())
+    } catch (e) {
+      const code = (e as { code?: string }).code ?? ''
+      setError(
+        code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' ? '' :
+        code === 'auth/popup-blocked' ? 'Your browser blocked the sign-in popup. Allow popups for this site and try again.' :
+        code === 'auth/unauthorized-domain' ? 'This web address is not authorised for sign-in in Firebase.' :
+        code === 'auth/network-request-failed' ? 'No connection. You need to be online the first time you sign in.' :
+        'Sign in failed. Try again.',
+      )
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <form onSubmit={submit} className={card}>
+    <main className={card}>
       <h1 className="mb-4 text-xl font-semibold">Card Stock</h1>
-      <label className="mb-3 block text-sm">Email
-        <input className={input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
-      </label>
-      <label className="mb-4 block text-sm">Password
-        <input className={input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" autoFocus />
-      </label>
       {error && <p role="alert" className="mb-3 text-sm text-red-500">{error}</p>}
-      <button className={button} disabled={busy}>Sign in</button>
-    </form>
+      <button className={button} disabled={busy} onClick={() => void google()}>Sign in with Google</button>
+      <p className="mt-3 text-xs opacity-70">Only approved Google accounts can see the stock.</p>
+    </main>
   )
 }
 
