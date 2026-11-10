@@ -57,7 +57,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const ctx = useChangeCtx()
   const { openItem, openImport, setView, setSearch } = useUi()
   const [moveTo, setMoveTo] = useState('')
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'value', dir: -1 })
   const [onlySticker, setOnlySticker] = useState(false)
 
   const visible = useMemo(() => {
