@@ -1,8 +1,11 @@
+export type ProfileId = 'p1' | 'p2'
+export const PROFILE_IDS: readonly ProfileId[] = ['p1', 'p2']
+
 export type PaymentMethod = 'cash' | 'card' | 'payid' | 'trade'
 
 export interface SaleLine {
   itemId: string
-  ownerProfileId: string
+  ownerProfileId: ProfileId
   qty: number
   stickerPriceCents: number
   unitPriceCents: number
@@ -11,11 +14,11 @@ export interface SaleLine {
 export interface SalePayment {
   method: PaymentMethod
   amountCents: number
-  receivedByProfileId: string
+  receivedByProfileId: ProfileId
 }
 
 export interface SaleDraft {
-  soldByProfileId: string
+  soldByProfileId: ProfileId
   lines: SaleLine[]
   payments: SalePayment[]
   discountCents: number
@@ -38,7 +41,7 @@ export function saleTotals(sale: Pick<SaleDraft, 'lines' | 'payments' | 'discoun
 const isInt = (n: number) => Number.isInteger(n)
 
 /** Returns a list of problems; an empty list means the sale can be saved. */
-export function validateSale(sale: SaleDraft, validProfileIds: readonly string[] = ['p1', 'p2']): string[] {
+export function validateSale(sale: SaleDraft, validProfileIds: readonly string[] = PROFILE_IDS): string[] {
   const errors: string[] = []
   if (!validProfileIds.includes(sale.soldByProfileId)) errors.push('Unknown seller')
   if (sale.lines.length === 0) errors.push('Add at least one item')
@@ -62,9 +65,9 @@ export function validateSale(sale: SaleDraft, validProfileIds: readonly string[]
 
 /** A single-payment sale from one line, using the sticker price unless overridden. */
 export function quickSale(args: {
-  soldByProfileId: string
+  soldByProfileId: ProfileId
   itemId: string
-  ownerProfileId: string
+  ownerProfileId: ProfileId
   stickerPriceCents: number
   priceCents?: number
   qty?: number

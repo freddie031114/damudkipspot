@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.26",
     "firebase": "^13.2.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

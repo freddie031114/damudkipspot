@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { quickSale, saleTotals, validateSale } from './sale'
+import { quickSale, saleTotals, validateSale, type SaleDraft } from './sale'
 import { stickerFromMarket } from './sticker'
 
-const base = { soldByProfileId: 'p1', itemId: 'A', ownerProfileId: 'p2', method: 'cash' as const }
+const base = { soldByProfileId: 'p1' as const, itemId: 'A', ownerProfileId: 'p2' as const, method: 'cash' as const }
 
 describe('quick sale', () => {
   it('pre-fills the price from the sticker and balances the payment', () => {
@@ -29,15 +29,15 @@ describe('quick sale', () => {
 
 describe('validateSale', () => {
   it('supports a bundle discount and split payments', () => {
-    const sale = {
+    const sale: SaleDraft = {
       soldByProfileId: 'p1', discountCents: 500,
       lines: [
         { itemId: 'A', ownerProfileId: 'p1', qty: 1, stickerPriceCents: 3000, unitPriceCents: 3000 },
         { itemId: 'B', ownerProfileId: 'p2', qty: 1, stickerPriceCents: 2000, unitPriceCents: 2000 },
       ],
       payments: [
-        { method: 'cash' as const, amountCents: 2000, receivedByProfileId: 'p1' },
-        { method: 'payid' as const, amountCents: 2500, receivedByProfileId: 'p1' },
+        { method: 'cash', amountCents: 2000, receivedByProfileId: 'p1' },
+        { method: 'payid', amountCents: 2500, receivedByProfileId: 'p1' },
       ],
     }
     expect(saleTotals(sale).totalCents).toBe(4500)
@@ -49,7 +49,7 @@ describe('validateSale', () => {
     bad.lines[0]!.qty = 0
     bad.lines[0]!.unitPriceCents = -1
     bad.payments[0]!.amountCents = 5
-    bad.soldByProfileId = 'zz'
+    bad.soldByProfileId = 'zz' as never
     const errors = validateSale(bad)
     expect(errors).toEqual(
       expect.arrayContaining([

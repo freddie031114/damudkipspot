@@ -185,6 +185,12 @@ Migration approach:
 3. Imported as `source = opening` lots with null cost; the whole batch is undoable.
 4. After import the dashboard totals must equal the sheet's totals (cards + bulk, and slabs). Treat any mismatch as a failed migration.
 
+## Progress
+
+- Done: scaffold; pure domain logic with tests (money, sticker, FIFO, sales); pure change builders with audit entries and undo (tests); Firestore source and in-memory source; app store with undo stack and offline status; login; acting-profile switch; inventory table (virtualised, search, sort, inline edit, soft delete, combined read-only view); quick add with duplicate detection; quick sell with undo; keyboard shortcuts and cheat sheet. Browser-checked in demo mode (`npm run dev`, open `/?demo`, dev builds only).
+- Not yet done: Firestore rules tests (needs the Firebase emulator download), Vercel deploy, item drawer with lots and price-history chart, Trash screen, audit log screen, multi-line sales, import wizard and sheet migration, shows and Show mode, dashboard, reports, saved views, PWA service worker.
+- Not verified against live Firebase yet: sign-in, snapshots, and deployed rules.
+
 ## Build order
 
 Each phase ends with passing tests and a working app.
