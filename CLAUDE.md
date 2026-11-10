@@ -188,7 +188,7 @@ Answers from the owner (resolved):
 - **"Sealed" means a sealed promo** (a single still in its sealed promo pack). Import as `kind = single` with variant "Sealed promo". Not a sealed-product item.
 - **No purchase costs exist.** All opening lots import with null cost. Profit reports show opening-stock sales as revenue with "cost unknown" and keep them out of profit totals, so profit is never overstated. Costs can be added later per lot or in bulk, and reports then update.
 
-Original findings: about 48 rows in the left block, 52 in the right. Each has Cards / Market / Sticker, a Total, a Bulk figure and a Slabs total. About 48 rows in the left block, 52 in the right, plus 15 slabs in the left block.
+Each block has Cards / Market / Sticker columns, a Total, a Bulk figure and a Slabs total. About 48 rows in the left block (plus 15 slabs) and 52 in the right.
 
 What this tells us:
 - **Sticker is already ~1.1 × market, rounded to the nearest $1** in the left block. The right block sometimes rounds up to $5 (Arbok $35 → $40, Steelix $35 → $40, Charizard 094/080 $40 → $45), which the manual sticker override and the $5 rounding option cover.
