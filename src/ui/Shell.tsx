@@ -3,6 +3,7 @@ import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-d
 import type { InventoryRow } from '../data/derive'
 import { useStore } from '../data/store'
 import { DEFAULT_NAMES, PROFILE_IDS, useActingProfile } from '../lib/profile'
+import { applyPwaUpdate, PWA_UPDATE_EVENT } from '../lib/pwa'
 import { toggleTheme } from '../lib/theme'
 import { CheatSheet } from './CheatSheet'
 import { btnCls, ghostBtn, isTyping } from './common'
@@ -24,6 +25,23 @@ const TrashPage = lazy(() => import('../pages/Trash').then((m) => ({ default: m.
 const AuditPage = lazy(() => import('../pages/Audit').then((m) => ({ default: m.AuditPage })))
 const SettingsPage = lazy(() => import('../pages/Settings').then((m) => ({ default: m.SettingsPage })))
 const RepricePage = lazy(() => import('../pages/Reprice').then((m) => ({ default: m.RepricePage })))
+
+function UpdateBanner() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    const on = () => setReady(true)
+    window.addEventListener(PWA_UPDATE_EVENT, on)
+    return () => window.removeEventListener(PWA_UPDATE_EVENT, on)
+  }, [])
+  if (!ready) return null
+  return (
+    <div role="status" className="flex items-center justify-center gap-3 bg-brand px-4 py-1.5 text-sm text-brand-fg">
+      A new version is ready.
+      <button className="rounded border border-current px-2 py-0.5 font-semibold" onClick={applyPwaUpdate}>Reload now</button>
+      <span className="opacity-80">Finish any sale first.</span>
+    </div>
+  )
+}
 
 function StatusPill() {
   const { online, pending } = useStore()
@@ -121,6 +139,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
   return (
     <UiContext.Provider value={ui}>
       <div className="flex h-screen flex-col">
+        <UpdateBanner />
         {!fullScreen && (
           <header className="border-b border-line">
             <div className="flex items-center gap-3 px-4 py-2">
