@@ -96,7 +96,7 @@ export function TradeInEditor({ value, onChange, owner, onOwner, saleTotalCents 
         <input className={`${small} col-span-4`} aria-label="Trade-in condition" placeholder="NM, PSA 9…" value={f.condition} onChange={set('condition')} readOnly={!!picked} />
         <input className={`${small} col-span-2`} aria-label="Trade-in quantity" inputMode="numeric" placeholder="Qty" value={f.qty} onChange={set('qty')} />
         <input className={`${small} col-span-3`} aria-label="Credit each" inputMode="decimal" placeholder="Credit $" value={f.credit} onChange={set('credit')} />
-        <input className={`${small} col-span-3`} aria-label="Market price each" inputMode="decimal" placeholder="Market $" title="Market price each. Leave blank to use the credit." value={f.market} onChange={set('market')} disabled={!!picked} />
+        <input className={`${small} col-span-3`} aria-label="Market price each" inputMode="decimal" placeholder="Mkt $" title="Market price each. Leave blank to use the credit." value={f.market} onChange={set('market')} disabled={!!picked} />
         <button type="button" className={`${ghostBtn} col-span-12 !py-1`} onClick={add}>Add card to trade</button>
       </div>
 

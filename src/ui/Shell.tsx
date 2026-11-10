@@ -5,11 +5,14 @@ import { useStore } from '../data/store'
 import { DEFAULT_NAMES, PROFILE_IDS, useActingProfile, type ProfileId } from '../lib/profile'
 import { applyPwaUpdate, PWA_UPDATE_EVENT } from '../lib/pwa'
 import { toggleTheme } from '../lib/theme'
+import { useIsMobile } from '../lib/useMedia'
 import { CheatSheet } from './CheatSheet'
 import { CommandPalette } from './CommandPalette'
 import { accentBtn, btnCls, ghostBtn, isTyping } from './common'
 import { Icon } from './icons'
 import { Inventory, type View } from './Inventory'
+import { MobileChrome } from './MobileChrome'
+import { MobileInventory } from './MobileInventory'
 import { Wordmark } from './Logo'
 import { QuickAdd } from './QuickAdd'
 import { QuickSell } from './QuickSell'
@@ -62,7 +65,7 @@ function Toasts() {
   const { toast, dismissToast } = useStore()
   if (!toast) return null
   return (
-    <div role="status" aria-live="polite" className={`fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-sm shadow-pop ${toast.error ? 'bg-red-600 text-white' : 'bg-ink text-page'}`}>
+    <div role="status" aria-live="polite" className={`fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-sm shadow-pop max-md:bottom-24 max-md:left-3 max-md:right-3 max-md:translate-x-0 max-md:justify-between ${toast.error ? 'bg-red-600 text-white' : 'bg-ink text-page'}`}>
       <span>{toast.text}</span>
       {toast.undo && <button className="font-semibold underline underline-offset-2" onClick={() => { toast.undo!(); dismissToast() }}>Undo</button>}
       <button aria-label="Dismiss" className="opacity-70 hover:opacity-100" onClick={dismissToast}>×</button>
@@ -150,9 +153,55 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
 
   const signOut = onSignOut && (() => { if (!pending || confirm('Some changes have not synced yet. Signing out now may lose them. Sign out anyway?')) onSignOut() })
 
+  const routes = (
+  <Suspense fallback={<p className="p-6 opacity-70">Loading…</p>}>
+    <Routes>
+      <Route path="/" element={<InventoryScreen />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/shows" element={<ShowsPage />} />
+      <Route path="/shows/:id" element={<ShowDetail />} />
+      <Route path="/show/:id" element={<ShowMode />} />
+      <Route path="/sales" element={<SalesPage />} />
+      <Route path="/expenses" element={<ExpensesPage />} />
+      <Route path="/reprice" element={<RepricePage />} />
+      <Route path="/trash" element={<TrashPage />} />
+      <Route path="/audit" element={<AuditPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="*" element={<p className="p-6">That page does not exist.</p>} />
+    </Routes>
+  </Suspense>
+  )
+
+  const isMobile = useIsMobile()
+  const overlays = (
+    <>
+      {modal?.kind === 'add' && <QuickAdd owner={view === 'all' ? (acting ?? 'p1') : view} onClose={() => setModal(null)} />}
+      {modal?.kind === 'sell' && <QuickSell initial={modal.row} onClose={() => setModal(null)} />}
+      {modal?.kind === 'keys' && <CheatSheet onClose={() => setModal(null)} />}
+      {modal?.kind === 'palette' && <CommandPalette onClose={() => setModal(null)} />}
+      <Suspense fallback={null}>
+        {modal?.kind === 'import' && <ImportWizard onClose={() => setModal(null)} />}
+        {itemId && <ItemDrawer itemId={itemId} onClose={() => setItemId(null)} />}
+      </Suspense>
+      <Toasts />
+    </>
+  )
+
+  // Phones get their own layout: top bar, bottom tabs, card lists. Show mode is full screen on both.
+  if (isMobile && !fullScreen) {
+    return (
+      <UiContext.Provider value={ui}>
+        <MobileChrome view={view} setView={setView} onSell={() => setModal({ kind: 'sell' })} onImport={ui.openImport} signOut={signOut} banner={<UpdateBanner />}>
+          {routes}
+        </MobileChrome>
+        {overlays}
+      </UiContext.Provider>
+    )
+  }
+
   return (
     <UiContext.Provider value={ui}>
-      <div className="flex h-screen flex-col">
+      <div className="flex h-dvh flex-col">
         <UpdateBanner />
         <div className="flex min-h-0 flex-1">
           {!fullScreen && (
@@ -208,7 +257,6 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
             {!fullScreen && (
               <header className="border-b border-line bg-surface/80 backdrop-blur">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 md:px-6">
-                  <span className="text-ink md:hidden"><Wordmark /></span>
                   <div className="relative min-w-44 max-w-xl flex-1">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 opacity-50">{Icon.search(16)}</span>
                     <input ref={searchRef} aria-label="Search inventory" placeholder="Search your stock" value={search}
@@ -225,47 +273,14 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
                     <button className={accentBtn} onClick={() => ui.openSell()}>{Icon.cash(16)}Sell<kbd className="ml-0.5 hidden rounded bg-black/10 px-1 text-[10px] lg:inline">S</kbd></button>
                   </div>
                 </div>
-                <nav className="flex gap-1 overflow-x-auto px-3 pb-2 md:hidden" aria-label="Screens (mobile)">
-                  {NAV.map((n) => (
-                    <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm ${isActive ? 'bg-chip font-semibold' : 'hover:bg-hover'}`}>
-                      {Icon[n.icon](15)}{n.label}
-                    </NavLink>
-                  ))}
-                  <span className="ml-auto flex shrink-0 items-center gap-1">
-                    {([...PROFILE_IDS, 'all'] as View[]).map((p) => <button key={p} aria-pressed={view === p} onClick={() => setView(p)} className={`rounded-lg px-3 py-1.5 text-sm ${view === p ? 'bg-brand text-brand-fg' : 'hover:bg-hover'}`}>{p === 'all' ? 'Combined' : DEFAULT_NAMES[p]}</button>)}
-                  </span>
-                </nav>
               </header>
             )}
 
-            <Suspense fallback={<p className="p-6 opacity-70">Loading…</p>}>
-              <Routes>
-                <Route path="/" element={<InventoryScreen />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/shows" element={<ShowsPage />} />
-                <Route path="/shows/:id" element={<ShowDetail />} />
-                <Route path="/show/:id" element={<ShowMode />} />
-                <Route path="/sales" element={<SalesPage />} />
-                <Route path="/expenses" element={<ExpensesPage />} />
-                <Route path="/reprice" element={<RepricePage />} />
-                <Route path="/trash" element={<TrashPage />} />
-                <Route path="/audit" element={<AuditPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="*" element={<p className="p-6">That page does not exist.</p>} />
-              </Routes>
-            </Suspense>
+            {routes}
           </div>
         </div>
 
-        {modal?.kind === 'add' && <QuickAdd owner={view === 'all' ? (acting ?? 'p1') : view} onClose={() => setModal(null)} />}
-        {modal?.kind === 'sell' && <QuickSell initial={modal.row} onClose={() => setModal(null)} />}
-        {modal?.kind === 'keys' && <CheatSheet onClose={() => setModal(null)} />}
-        {modal?.kind === 'palette' && <CommandPalette onClose={() => setModal(null)} />}
-        <Suspense fallback={null}>
-          {modal?.kind === 'import' && <ImportWizard onClose={() => setModal(null)} />}
-          {itemId && <ItemDrawer itemId={itemId} onClose={() => setItemId(null)} />}
-        </Suspense>
-        <Toasts />
+        {overlays}
       </div>
     </UiContext.Provider>
   )
@@ -274,5 +289,6 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
 function InventoryScreen() {
   const { view, search, openSell } = useUi()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  if (useIsMobile()) return <MobileInventory />
   return <Inventory view={view} search={search} selected={selected} setSelected={setSelected} onSell={(r) => openSell(r)} />
 }

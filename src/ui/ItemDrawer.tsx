@@ -61,7 +61,7 @@ export function ItemDrawer({ itemId, onClose }: { itemId: string; onClose: () =>
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <aside role="dialog" aria-label={`Details for ${item.name}`} className="h-full w-full max-w-xl overflow-y-auto bg-surface p-5 shadow-xl" key={item.id}>
+      <aside role="dialog" aria-label={`Details for ${item.name}`} className="h-full w-full max-w-xl overflow-y-auto bg-surface p-5 shadow-xl max-md:p-4 max-md:pt-[max(1rem,env(safe-area-inset-top))]" key={item.id}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">{item.name}</h2>

@@ -21,6 +21,7 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 | Auth / backend | Firebase Auth with Google sign-in, Cloud Firestore, free Spark plan, no Cloud Functions. Hosted on Vercel. |
 | Trades | Customers can pay partly or wholly in cards. Quick sell and Show mode have a Trade-in section; cards received become stock costed at the credit given. See assumption 3. |
 | Location | **Removed** at the owner's request. Items have no location field or column. |
+| Layouts | **Two layouts.** Desktop (768px and wider) keeps the sidebar, top bar and wide table. Phones (under 768px) get their own layout, chosen in code by `useIsMobile()` (`src/lib/useMedia.ts`): a slim top bar with a Freddie / Ferrell / Both switch, a bottom tab bar (Stock, Shows, Sell, Costs, More), the inventory as a searchable card list, dialogs as bottom sheets, and Show mode with a "Review sale" bar that opens the current sale as a sheet. Both layouts read the same data and write through the same helpers, so nothing differs in behaviour. It switches live when the window is resized or the phone rotated. |
 | Money | Integer cents everywhere, AUD only. No floats. |
 | Deletes | Soft delete only (`deleted_at`). No hard deletes through the API. |
 
@@ -162,7 +163,7 @@ Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (
 
 ### Deliberately left for later
 
-Card metadata autocomplete from an external database, automatic price providers, printable price labels, barcode/camera scanning, a buylist calculator (offer X% of market), mobile layout, GST.
+Card metadata autocomplete from an external database, automatic price providers, printable price labels, barcode/camera scanning, a buylist calculator (offer X% of market), GST. On phones: multi-select and bulk actions in the inventory (open an item to edit or delete it), and inline cell editing (edit in the item panel instead).
 
 ## Existing inventory (Google Sheet "Inventory")
 
@@ -199,6 +200,7 @@ Migration approach:
 - Screens: Inventory (virtual table, inline edit, saved views, bulk delete/move/mark stickered), item drawer (details, lots with editable cost, price chart, sales, history), quick add, quick sell, Show mode (cart, bundle discount, payment methods, takings, void), Shows and show detail (float, cash count, shared costs, profit, settlement), Dashboard, Sales log and profit per card with CSV export, Expenses (split and settle up), Reprice, Trash, Audit log, Settings and backups, Import wizard, command palette (`Ctrl+K`), shortcut sheet.
 - Spreadsheet import: parses the two-block Google Sheet, cross-checks against its printed totals, imports as opening stock with unknown cost, one-click undo. Generic CSV import with column mapping and a price multiplier (Collectr-style headers are guessed; the real Collectr export has not been checked).
 - Offline: service worker precaches the app (tested: reload and deep links open with no connection). Updates wait for a click so a sale is never interrupted.
+- Phone layout (see Agreed decisions): bottom tab bar, card lists for stock, sales, trades, costs and reprice, bottom-sheet dialogs, touch-sized controls. Checked at 390px wide in a mobile browser emulator; not yet tried on a real phone.
 - Look: dark pond-navy sidebar with icons, slim top bar with search and actions, rounded cards with soft shadows, Mudkip palette, light and dark. Combined view restored.
 - Tests: 140+ unit tests (`npm test`), 15 Firestore rules tests against the emulator (`npm run test:rules`, needs Java), CI workflow runs both.
 - Firebase project `damudkipspot-a430f`: Firestore (australia-southeast1) created, rules deployed, Google sign-in enabled, Vercel domains authorised. Vercel project has the `VITE_FIREBASE_*` variables and deploys on every push.
@@ -263,6 +265,7 @@ Each phase ends with passing tests and a working app.
 - Money is integer cents; format with `Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' })`.
 - Dates stored as UTC `timestamptz`; displayed in the browser's timezone. Financial year = 1 July to 30 June.
 - No component reads Firestore directly. Reads come from the live store; writes go through helpers that batch the change with its audit entry.
+- Every screen must work in both layouts. Use `useIsMobile()` to render a card list instead of a table on phones; Tailwind `max-md:` for small tweaks. Inputs are 16px on phones so iOS does not zoom, and bars respect the safe-area inset.
 - Business logic (money, sticker, FIFO, sales) lives in `src/domain` as pure functions with tests; no Firebase imports there.
 - Every write helper needs: Zod validation, an audit entry, an inverse for undo, and a test.
 - Changes to `firestore.rules` need a rules test.

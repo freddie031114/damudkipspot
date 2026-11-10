@@ -64,3 +64,20 @@ option { background: var(--surface); color: var(--ink); }
 
 /* Quiet, thin scrollbars. */
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 22%, transparent) transparent; }
+
+/* Phone layout: inputs at 16px stop iOS zooming the page when one is focused, and the
+   bottom bar clears the home indicator. */
+@media (max-width: 767px) {
+  input, select, textarea { font-size: 16px !important; }
+  body { overscroll-behavior-y: none; }
+}
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+/* Wide tables scroll sideways inside their own box on phones instead of stretching the page.
+   Page tables get a minimum width so columns keep readable spacing instead of being squashed. */
+@media (max-width: 767px) {
+  :where(main, [role="dialog"]) :has(> table) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  main table { min-width: 34rem; }
+  main table :is(th, td), [role="dialog"] table :is(th, td) { padding-right: 0.6rem; }
+}

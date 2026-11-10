@@ -54,7 +54,7 @@ function EditableCell({ display, initial, onCommit, disabled, align = 'left', la
 }
 
 /** Bulk cards are just a lump-sum value per person, kept out of the card list. */
-function BulkChip({ profile }: { profile: View }) {
+export function BulkChip({ profile, short }: { profile: View; short?: boolean }) {
   const { rows, apply, notify } = useStore()
   const ctx = useChangeCtx()
   const bulk = rows.filter((r) => r.item.kind === 'bulk' && (profile === 'all' || r.item.profileId === profile))
@@ -79,7 +79,7 @@ function BulkChip({ profile }: { profile: View }) {
       <strong className="text-lg font-semibold">
         <EditableCell label="bulk cards value" initial={(cents / 100).toFixed(2)} display={formatAud(cents)} onCommit={save} disabled={profile === 'all'} />
       </strong>
-      <span className="px-1 text-[11px] uppercase tracking-wider opacity-60">Bulk cards{profile === 'all' ? '' : ' (click to edit)'}</span>
+      <span className="px-1 text-[11px] uppercase tracking-wider opacity-60">Bulk cards{profile === 'all' || short ? '' : ' (click to edit)'}</span>
     </span>
   )
 }

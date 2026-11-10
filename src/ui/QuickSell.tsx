@@ -116,7 +116,7 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
             {METHODS.map((m, i) => (
               <button type="button" key={m.id} role="radio" aria-checked={method === m.id} onClick={() => setMethod(m.id)}
                 className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${method === m.id ? 'border-brand bg-brand text-brand-fg' : 'border-line'}`}>
-                {m.label} <span className="text-xs opacity-60">Ctrl+{i + 1}</span>
+                {m.label} <span className="text-xs opacity-60 max-md:hidden">Ctrl+{i + 1}</span>
               </button>
             ))}
           </div>
@@ -129,7 +129,7 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
           {error && <p role="alert" className="mb-2 text-sm text-red-500">{error}</p>}
           <div className="flex items-center justify-between">
             <span className="text-lg font-semibold">{formatAud(saleTotal)}</span>
-            <button className={btnCls}>{trades.length > 0 ? 'Complete trade' : 'Sell'} (Enter)</button>
+            <button className={`${btnCls} max-md:!px-6 max-md:!py-3`}>{trades.length > 0 ? 'Complete trade' : 'Sell'}<span className="max-md:hidden"> (Enter)</span></button>
           </div>
         </form>
       )}

@@ -7,6 +7,7 @@ import { formatAud } from '../domain/money'
 import type { PaymentMethod } from '../domain/sale'
 import { buildSalesLog, filterLog, financialYearOf, financialYearStarting, profitPerCard, salesLogCsv, toCsv, totalsOf } from '../domain/report'
 import { DEFAULT_NAMES, PROFILE_IDS } from '../lib/profile'
+import { useIsMobile } from '../lib/useMedia'
 import { btnCls, ghostBtn } from '../ui/common'
 import { downloadText, fmtDateTime, methodLabel, nameOf } from '../ui/format'
 
@@ -31,6 +32,7 @@ export function SalesPage() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [voided, setVoided] = useState(false)
+  const isMobile = useIsMobile()
 
   const all = useMemo(
     () => buildSalesLog({ sales: raw.sales, items: raw.items, showName: (id) => raw.shows.find((s) => s.id === id)?.name ?? '', costOf: saleLineCosts(raw) }),
@@ -62,6 +64,32 @@ export function SalesPage() {
     return raw.sales.filter((s) => ids.has(s.id) && (s.tradeIns?.length ?? 0) > 0).sort((a, b) => b.soldAt - a.soldAt)
   }, [rows, raw.sales])
 
+  const filters = (
+  <div className="mb-3 flex flex-wrap items-end gap-3" aria-label="Filters">
+    <label className="text-xs">Stock of
+      <select className={`${sel} block`} value={owner} onChange={(e) => setOwner(e.target.value as ProfileId | 'all')}><option value="all">Everyone</option>{PROFILE_IDS.map((p) => <option key={p} value={p}>{DEFAULT_NAMES[p]}</option>)}</select></label>
+    <label className="text-xs">Sold by
+      <select className={`${sel} block`} value={seller} onChange={(e) => setSeller(e.target.value as ProfileId | 'all')}><option value="all">Anyone</option>{PROFILE_IDS.map((p) => <option key={p} value={p}>{DEFAULT_NAMES[p]}</option>)}</select></label>
+    <label className="text-xs">Show
+      <select className={`${sel} block`} value={showId} onChange={(e) => setShowId(e.target.value)}>
+        <option value="all">All sales</option><option value="none">Not at a show</option>
+        {raw.shows.filter((s) => !s.deletedAt).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select></label>
+    <label className="text-xs">Payment
+      <select className={`${sel} block`} value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod | 'all')}><option value="all">Any</option>{(['cash', 'card', 'payid', 'trade'] as const).map((m) => <option key={m} value={m}>{methodLabel[m]}</option>)}</select></label>
+    <label className="text-xs">Dates
+      <select className={`${sel} block`} aria-label="Date range" value={range} onChange={(e) => setRange(e.target.value as Range)}>
+        <option value="all">All time</option><option value="month">This month</option><option value="lastmonth">Last month</option>
+        <option value="fy">This financial year ({fyLabel})</option><option value="lastfy">Last financial year</option><option value="custom">Custom…</option>
+      </select></label>
+    {range === 'custom' && <>
+      <label className="text-xs">From<input className={`${sel} block`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+      <label className="text-xs">To<input className={`${sel} block`} type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+    </>}
+    <label className="flex items-center gap-1 pb-1 text-xs"><input type="checkbox" checked={voided} onChange={(e) => setVoided(e.target.checked)} /> Show voided</label>
+  </div>
+  )
+
   const exportLog = () => downloadText(`sales-${new Date().toISOString().slice(0, 10)}.csv`, salesLogCsv(rows, nameOf))
   const exportCards = () =>
     downloadText(`profit-per-card-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([
@@ -72,29 +100,12 @@ export function SalesPage() {
   return (
     <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <h1 className="mb-3 text-xl font-semibold">Sales</h1>
-      <div className="mb-3 flex flex-wrap items-end gap-3" aria-label="Filters">
-        <label className="text-xs">Stock of
-          <select className={`${sel} block`} value={owner} onChange={(e) => setOwner(e.target.value as ProfileId | 'all')}><option value="all">Everyone</option>{PROFILE_IDS.map((p) => <option key={p} value={p}>{DEFAULT_NAMES[p]}</option>)}</select></label>
-        <label className="text-xs">Sold by
-          <select className={`${sel} block`} value={seller} onChange={(e) => setSeller(e.target.value as ProfileId | 'all')}><option value="all">Anyone</option>{PROFILE_IDS.map((p) => <option key={p} value={p}>{DEFAULT_NAMES[p]}</option>)}</select></label>
-        <label className="text-xs">Show
-          <select className={`${sel} block`} value={showId} onChange={(e) => setShowId(e.target.value)}>
-            <option value="all">All sales</option><option value="none">Not at a show</option>
-            {raw.shows.filter((s) => !s.deletedAt).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select></label>
-        <label className="text-xs">Payment
-          <select className={`${sel} block`} value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod | 'all')}><option value="all">Any</option>{(['cash', 'card', 'payid', 'trade'] as const).map((m) => <option key={m} value={m}>{methodLabel[m]}</option>)}</select></label>
-        <label className="text-xs">Dates
-          <select className={`${sel} block`} aria-label="Date range" value={range} onChange={(e) => setRange(e.target.value as Range)}>
-            <option value="all">All time</option><option value="month">This month</option><option value="lastmonth">Last month</option>
-            <option value="fy">This financial year ({fyLabel})</option><option value="lastfy">Last financial year</option><option value="custom">Custom…</option>
-          </select></label>
-        {range === 'custom' && <>
-          <label className="text-xs">From<input className={`${sel} block`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-          <label className="text-xs">To<input className={`${sel} block`} type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        </>}
-        <label className="flex items-center gap-1 pb-1 text-xs"><input type="checkbox" checked={voided} onChange={(e) => setVoided(e.target.checked)} /> Show voided</label>
-      </div>
+      {isMobile ? (
+        <details className="mb-3 rounded-xl border border-line bg-surface px-3 py-2">
+          <summary className="flex min-h-9 cursor-pointer items-center text-sm font-medium">Filters{(owner !== 'all' || seller !== 'all' || showId !== 'all' || method !== 'all' || range !== 'all' || voided) && <span className="ml-2 rounded-full bg-brand px-2 text-xs text-brand-fg">on</span>}<span className="ml-auto opacity-60" aria-hidden="true">▾</span></summary>
+          <div className="mt-2">{filters}</div>
+        </details>
+      ) : filters}
 
       <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-2xl border border-line bg-surface shadow-card px-3 py-2 text-sm" aria-label="Totals">
         <span><strong>{totals.count}</strong> lines</span>
@@ -114,7 +125,25 @@ export function SalesPage() {
       </div>
 
       {rows.length === 0 ? <p className="opacity-70">No sales match these filters.</p> : tab === 'trades' ? (
-        trades.length === 0 ? <p className="opacity-70">No trades in this selection. Add cards under “Trade-in” when you sell.</p> : (
+        trades.length === 0 ? <p className="opacity-70">No trades in this selection. Add cards under “Trade-in” when you sell.</p> : isMobile ? (
+          <ul className="space-y-2" aria-label="Trades">
+            {trades.map((s) => {
+              const credit = s.tradeIns!.reduce((n, t) => n + t.qty * t.creditCents, 0)
+              const cash = s.payments.filter((p) => p.method !== 'trade').reduce((n, p) => n + p.amountCents, 0)
+              return (
+                <li key={s.id} className={`rounded-2xl border border-line bg-surface p-3 shadow-card ${s.voidedAt ? 'line-through opacity-50' : ''}`}>
+                  <p className="text-xs opacity-70">{fmtDateTime(s.soldAt)} · {nameOf(s.soldByProfileId)}{s.showId && <> · {raw.shows.find((x) => x.id === s.showId)?.name}</>}</p>
+                  <p className="mt-1 text-sm"><span className="opacity-60">Gave </span>{s.lines.map((l) => `${l.qty} × ${itemName.get(l.itemId) ?? 'Unknown'}`).join(', ')}</p>
+                  <p className="text-sm"><span className="opacity-60">Got </span>{s.tradeIns!.map((t) => `${t.qty} × ${itemName.get(t.itemId) ?? 'Unknown'} (${formatAud(t.creditCents)})`).join(', ')}</p>
+                  <div className="mt-1.5 flex items-center justify-between text-sm">
+                    <span>Credit <strong>{formatAud(credit)}</strong>{cash !== 0 && <span className="opacity-80"> · {cash > 0 ? `${formatAud(cash)} paid` : `${formatAud(-cash)} handed back`}</span>}</span>
+                    {!s.voidedAt && <button className="flex h-9 items-center px-2 text-xs underline" onClick={() => apply(voidSale(ctx(), s), { undoable: false })}>Void</button>}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase"><tr><th className="py-1">When</th><th>Show</th><th>Sold by</th><th>Gave</th><th>Received</th><th className="text-right">Trade credit</th><th className="text-right">Cash difference</th><th /></tr></thead>
             <tbody>
@@ -137,6 +166,30 @@ export function SalesPage() {
             </tbody>
           </table>
         )
+      ) : tab === 'log' && isMobile ? (
+        <>
+          <ul className="space-y-2" aria-label="Sales log">
+            {rows.slice(0, MAX_ROWS).map((r, i) => (
+              <li key={r.saleId + i} className={`rounded-2xl border border-line bg-surface p-3 shadow-card ${r.voided ? 'line-through opacity-50' : ''}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{r.itemName} <span className="text-xs font-normal opacity-60">{r.cardNumber}</span></p>
+                    <p className="text-xs opacity-70">{fmtDateTime(r.soldAt)}{r.showName && <> · {r.showName}</>}</p>
+                  </div>
+                  <strong className="shrink-0">{formatAud(r.revenueCents)}</strong>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between text-xs">
+                  <span className="opacity-80">{r.qty} × {formatAud(r.unitPriceCents)} · {r.methods.map((m) => methodLabel[m]).join('+')} · {nameOf(r.soldBy)}'s sale of {nameOf(r.owner)}'s stock</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span>{r.profitCents === null ? <span className="opacity-60">no cost recorded</span> : <>Profit <strong>{formatAud(r.profitCents)}</strong></>}</span>
+                  {!r.voided && <button className="flex h-9 items-center px-2 underline" onClick={() => { const sale = raw.sales.find((x) => x.id === r.saleId); if (sale) apply(voidSale(ctx(), sale), { undoable: false }) }}>Void</button>}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {rows.length > MAX_ROWS && <p className="mt-2 text-xs opacity-70">Showing the newest {MAX_ROWS} of {rows.length} lines. Export CSV includes all of them.</p>}
+        </>
       ) : tab === 'log' ? (
         <>
           <table className="w-full text-sm">

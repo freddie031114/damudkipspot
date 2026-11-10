@@ -7,7 +7,8 @@ import { categoryOf, EXPENSE_CATEGORIES, expenseBalance, isoDay } from '../domai
 import { formatAud, parseMoney } from '../domain/money'
 import { toCsv } from '../domain/report'
 import { DEFAULT_NAMES, PROFILE_IDS, useActingProfile } from '../lib/profile'
-import { btnCls, ghostBtn, inputCls } from '../ui/common'
+import { useIsMobile } from '../lib/useMedia'
+import { BottomSheet, btnCls, ghostBtn, inputCls } from '../ui/common'
 import { downloadText, fmtIsoDay, nameOf, today } from '../ui/format'
 
 const lbl = 'block text-xs font-medium'
@@ -24,6 +25,8 @@ export function ExpensesPage() {
   const [showFilter, setShowFilter] = useState('all')
   const [catFilter, setCatFilter] = useState('all')
   const [showSettled, setShowSettled] = useState(false)
+  const isMobile = useIsMobile()
+  const [formOpen, setFormOpen] = useState(false)
   const [f, setF] = useState({ description: '', amount: '', category: 'Table fee' as string, date: today(), paidBy: (acting ?? 'p1') as ProfileId, showId: '', custom: false, pct: '50' })
 
   const showName = useMemo(() => new Map(raw.shows.map((s) => [s.id, s.name])), [raw])
@@ -53,6 +56,7 @@ export function ExpensesPage() {
         splitPct: { p1: pct1, p2: 100 - pct1 },
       }))
       setF({ ...f, description: '', amount: '' })
+      setFormOpen(false)
     } catch (err) {
       notify((err as Error).message, true)
     }
@@ -68,29 +72,57 @@ export function ExpensesPage() {
       ...listed.map((e) => [dayOf(e), e.description, categoryOf(e), e.showId ? showName.get(e.showId) ?? '' : '', nameOf(e.paidByProfileId), e.splitPct.p1, e.splitPct.p2, (e.amountCents / 100).toFixed(2), e.settledAt ? 'Yes' : 'No']),
     ]))
 
+  const addForm = (
+    <form onSubmit={add} className="grid grid-cols-2 gap-3" aria-label="Add cost">
+      <label className={`${lbl} col-span-2`}>Category
+        <select className={inputCls} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></label>
+      <label className={`${lbl} col-span-2`}>What for (optional)
+        <input className={inputCls} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={f.category === 'Table fee' ? 'Brisbane show table' : 'Parking, toploaders…'} /></label>
+      <label className={lbl}>Amount
+        <input className={inputCls} inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="$" aria-label="Amount" /></label>
+      <label className={lbl}>Date
+        <input className={inputCls} type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
+      <label className={lbl}>Paid by
+        <select className={inputCls} value={f.paidBy} onChange={(e) => setF({ ...f, paidBy: e.target.value as ProfileId })}>{PROFILE_IDS.map((p) => <option key={p} value={p}>{DEFAULT_NAMES[p]}</option>)}</select></label>
+      <label className={lbl}>Show (optional)
+        <select className={inputCls} value={f.showId} onChange={(e) => setF({ ...f, showId: e.target.value })}>
+          <option value="">No show</option>{raw.shows.filter((x) => !x.deletedAt).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select></label>
+      <div className="col-span-2 flex items-center gap-3 text-sm">
+        <label className="flex items-center gap-1"><input type="checkbox" checked={f.custom} onChange={(e) => setF({ ...f, custom: e.target.checked })} /> Custom split</label>
+        {f.custom
+          ? <label className="flex items-center gap-1 text-xs">{DEFAULT_NAMES.p1} pays <input className={`${inputCls} !w-16`} inputMode="numeric" aria-label={`${DEFAULT_NAMES.p1} share percent`} value={f.pct} onChange={(e) => setF({ ...f, pct: e.target.value })} />% · {DEFAULT_NAMES.p2} {100 - (Number(f.pct) || 0)}%</label>
+          : <span className="text-xs opacity-70">Split 50 / 50</span>}
+      </div>
+      <div className="col-span-2 flex justify-end"><button className={btnCls}>Add cost</button></div>
+    </form>
+  )
+
   const s = owed.settlement
   return (
     <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
-        <span className="text-sm opacity-70">Table fees, travel, supplies: whatever you split between you.</span>
+        <span className="text-sm opacity-70 max-md:hidden">Table fees, travel, supplies: whatever you split between you.</span>
+        {isMobile && <button className={`${btnCls} ml-auto !py-2.5`} onClick={() => setFormOpen(true)}>+ Add a cost</button>}
       </div>
+      {isMobile && formOpen && <BottomSheet title="Add a cost" onClose={() => setFormOpen(false)}>{addForm}</BottomSheet>}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_24rem]">
         <section className="min-w-0 space-y-4" aria-label="Who owes whom">
-          <div className={`${box} flex flex-wrap items-center gap-x-8 gap-y-3`}>
-            <div className="flex flex-col leading-tight"><strong className="text-2xl font-semibold">{formatAud(owed.totalCents)}</strong><span className="text-[11px] uppercase tracking-wider opacity-60">Not yet settled</span></div>
+          <div className={`${box} flex flex-wrap items-center gap-x-8 gap-y-3 max-md:grid max-md:grid-cols-2`}>
+            <div className="flex flex-col leading-tight max-md:col-span-2"><strong className="text-2xl font-semibold">{formatAud(owed.totalCents)}</strong><span className="text-[11px] uppercase tracking-wider opacity-60">Not yet settled</span></div>
             {PROFILE_IDS.map((p) => (
               <div key={p} className="flex flex-col leading-tight">
                 <strong className="text-lg font-semibold">{formatAud(owed.paidCents[p])}</strong>
                 <span className="text-[11px] uppercase tracking-wider opacity-60">{DEFAULT_NAMES[p]} paid · share {formatAud(owed.shareCents[p])}</span>
               </div>
             ))}
-            <div className="ml-auto flex items-center gap-3">
-              <p className="rounded-xl bg-hover/70 px-3 py-2 text-sm" role="status" aria-label="Balance">
+            <div className="ml-auto flex items-center gap-3 max-md:col-span-2 max-md:ml-0 max-md:w-full max-md:flex-col max-md:items-stretch">
+              <p className="rounded-xl bg-hover/70 px-3 py-2 text-sm max-md:text-center" role="status" aria-label="Balance">
                 {s ? <><strong>{nameOf(s.from)}</strong> owes <strong>{nameOf(s.to)}</strong> <strong className="text-lg">{formatAud(s.amountCents)}</strong></> : open.length ? 'You are square: each has paid their share.' : 'Nothing to settle.'}
               </p>
-              <button className={btnCls} onClick={settle} disabled={open.length === 0} title="Mark everything listed as paid back">Settle up</button>
+              <button className={`${btnCls} max-md:!py-3`} onClick={settle} disabled={open.length === 0} title="Mark everything listed as paid back">Settle up</button>
             </div>
           </div>
           <p className="-mt-2 text-xs opacity-70">
@@ -111,6 +143,27 @@ export function ExpensesPage() {
             <button className={`${ghostBtn} ml-auto`} onClick={exportCsv} disabled={listed.length === 0}>Export CSV</button>
           </div>
 
+          {isMobile ? (
+            <ul className="space-y-2" aria-label="Costs">
+              {listed.map((e) => (
+                <li key={e.id} className={`rounded-2xl border border-line bg-surface p-3 shadow-card ${e.settledAt ? 'opacity-55' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{e.description}{e.settledAt && <span className="ml-2 rounded-full bg-chip px-1.5 text-[10px] text-ink">settled</span>}</p>
+                      <p className="text-xs opacity-70">{fmtIsoDay(dayOf(e))} · {categoryOf(e)}{e.showId && <> · <Link className="underline" to={`/shows/${e.showId}`}>{showName.get(e.showId) ?? 'Show'}</Link></>}</p>
+                    </div>
+                    <strong className="shrink-0 text-base">{formatAud(e.amountCents)}</strong>
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between text-xs">
+                    <span className="opacity-80">{nameOf(e.paidByProfileId)} paid · {e.splitPct.p1 === 50 ? 'split equally' : `${e.splitPct.p1}% / ${e.splitPct.p2}%`}</span>
+                    <button className="flex h-9 items-center px-2 underline" aria-label={`Remove ${e.description}`} onClick={() => apply(deleteExpense(ctx(), e))}>Remove</button>
+                  </div>
+                </li>
+              ))}
+              {listed.length === 0 && <li className="rounded-2xl border border-line bg-surface p-4 opacity-70">{all.length === 0 ? 'No costs yet. Tap “Add a cost” for the table fee or anything else you are splitting.' : 'Nothing matches. Everything here is settled, or the filters are too narrow.'}</li>}
+              {listed.length > 0 && <li className="flex justify-between px-1 text-sm font-semibold"><span>Total ({listed.length})</span><span>{formatAud(totalListed)}</span></li>}
+            </ul>
+          ) : (
           <div className={`${box} !p-0 overflow-x-auto`}>
             <table className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-xs uppercase"><tr className="border-b border-line"><th className="px-4 py-2">Date</th><th>Cost</th><th>Category</th><th>Show</th><th>Paid by</th><th>Split</th><th className="text-right">Amount</th><th className="pr-4" /></tr></thead>
@@ -132,34 +185,15 @@ export function ExpensesPage() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
 
-        <section className={`${box} h-fit`} aria-label="Add a cost">
-          <h2 className="mb-2 font-semibold">Add a cost</h2>
-          <form onSubmit={add} className="grid grid-cols-2 gap-3" aria-label="Add cost">
-            <label className={`${lbl} col-span-2`}>Category
-              <select className={inputCls} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></label>
-            <label className={`${lbl} col-span-2`}>What for (optional)
-              <input className={inputCls} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={f.category === 'Table fee' ? 'Brisbane show table' : 'Parking, toploaders…'} /></label>
-            <label className={lbl}>Amount
-              <input className={inputCls} inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="$" aria-label="Amount" /></label>
-            <label className={lbl}>Date
-              <input className={inputCls} type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></label>
-            <label className={lbl}>Paid by
-              <select className={inputCls} value={f.paidBy} onChange={(e) => setF({ ...f, paidBy: e.target.value as ProfileId })}>{PROFILE_IDS.map((p) => <option key={p} value={p}>{DEFAULT_NAMES[p]}</option>)}</select></label>
-            <label className={lbl}>Show (optional)
-              <select className={inputCls} value={f.showId} onChange={(e) => setF({ ...f, showId: e.target.value })}>
-                <option value="">No show</option>{raw.shows.filter((x) => !x.deletedAt).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-              </select></label>
-            <div className="col-span-2 flex items-center gap-3 text-sm">
-              <label className="flex items-center gap-1"><input type="checkbox" checked={f.custom} onChange={(e) => setF({ ...f, custom: e.target.checked })} /> Custom split</label>
-              {f.custom
-                ? <label className="flex items-center gap-1 text-xs">{DEFAULT_NAMES.p1} pays <input className={`${inputCls} !w-16`} inputMode="numeric" aria-label={`${DEFAULT_NAMES.p1} share percent`} value={f.pct} onChange={(e) => setF({ ...f, pct: e.target.value })} />% · {DEFAULT_NAMES.p2} {100 - (Number(f.pct) || 0)}%</label>
-                : <span className="text-xs opacity-70">Split 50 / 50</span>}
-            </div>
-            <div className="col-span-2 flex justify-end"><button className={btnCls}>Add cost</button></div>
-          </form>
-        </section>
+        {!isMobile && (
+          <section className={`${box} h-fit`} aria-label="Add a cost">
+            <h2 className="mb-2 font-semibold">Add a cost</h2>
+            {addForm}
+          </section>
+        )}
       </div>
     </main>
   )
