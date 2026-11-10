@@ -148,6 +148,8 @@ export function updateItem(ctx: Ctx, before: Item, edit: ItemEdit): Change | nul
     const m = changed.marketPriceCents
     if (!Number.isInteger(m) || (m as number) < 0) throw new Error('Market price must be zero or more')
     changed.marketPriceUpdatedAt = ctx.now
+    changed.previousMarketPriceCents = before.marketPriceCents
+    old.previousMarketPriceCents = before.previousMarketPriceCents
   }
   const ops: WriteOp[] = [{ collection: 'items', id: before.id, merge: true, data: { ...changed, ...stamp(ctx) } }]
   if ('marketPriceCents' in changed) ops.push(priceHistoryOp(ctx, before.id, changed.marketPriceCents as number))

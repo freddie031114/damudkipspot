@@ -7,6 +7,7 @@ import type { ProfileId } from '../data/types'
 import { formatAud, parseMoney } from '../domain/money'
 import { DEFAULT_NAMES } from '../lib/profile'
 import { btnCls, ghostBtn } from './common'
+import { useUi } from './UiContext'
 
 export type View = ProfileId | 'all'
 type SortKey = 'name' | 'qty' | 'market' | 'sticker' | 'value' | 'location'
@@ -53,6 +54,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
 }) {
   const { rows, apply, notify, ready } = useStore()
   const ctx = useChangeCtx()
+  const { openItem } = useUi()
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
   const readOnly = view === 'all'
 
@@ -169,7 +171,8 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
                   onCommit={(v) => run(() => updateItem(ctx(), it, { location: v.trim() }))} />
                 <div className="flex items-center gap-1 truncate text-xs">
                   {flags.map((f) => <span key={f} className="rounded bg-accent/20 px-1 text-accent-ink">{f}</span>)}
-                  <button className={`${btnCls} ml-auto !px-2 !py-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100`} aria-label={`Sell ${it.name}`} disabled={r.qty < 1} onClick={() => onSell(r)}>Sell</button>
+                  <button className="ml-auto rounded px-1.5 text-xs underline opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label={`Open ${it.name}`} onClick={() => openItem(it.id)}>Open</button>
+                  <button className={`${btnCls} !px-2 !py-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100`} aria-label={`Sell ${it.name}`} disabled={r.qty < 1} onClick={() => onSell(r)}>Sell</button>
                 </div>
               </div>
             )

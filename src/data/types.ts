@@ -27,6 +27,8 @@ export interface Item extends Base {
   sealedType: string
   marketPriceCents: number
   marketPriceUpdatedAt: number
+  /** Market price before the most recent change (for top movers). */
+  previousMarketPriceCents: number | null
   stickerOverrideCents: number | null
   location: string
   notes: string
@@ -98,6 +100,7 @@ export const NEW_ITEM_DEFAULTS = {
   grade: '',
   sealedType: '',
   marketPriceCents: 0,
+  previousMarketPriceCents: null as number | null,
   stickerOverrideCents: null as number | null,
   location: '',
   notes: '',
