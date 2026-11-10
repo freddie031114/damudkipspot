@@ -20,10 +20,10 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 | Money | Integer cents everywhere, AUD only. No floats. |
 | Deletes | Soft delete only (`deleted_at`). No hard deletes through the API. |
 
-### Assumptions to confirm (chosen as defaults, cheap to change)
+### Confirmed assumptions
 
 1. **Sticker override.** Sticker is computed from market by default, but an item can carry an optional manual sticker override (for bulk bins, bundles, showcase cards). Clearing the override returns to 1.1×.
-2. **Sticker rounding.** Exact to the cent by default, with a per-profile rounding setting (none / nearest 50c / nearest $1 / up to next $1).
+2. **Sticker rounding.** Default is **nearest $1** (confirmed; it matches the existing sheet). Per-profile setting: none / nearest 50c / nearest $1 / nearest $5.
 3. **Trades.** A trade is a payment method with a trade credit value; optionally the cards received are entered as new lots whose cost is the credit given.
 4. **GST.** Not modelled. Reports give revenue, cost and profit; add GST handling only if either person registers.
 5. **Shared-cost split.** Table fee and other show expenses split equally by default, with a custom percentage option per expense.
@@ -95,11 +95,11 @@ All tables have `id uuid`, `created_at`, `updated_at`, `created_by`, `updated_by
 
 **profiles** — `user_id` (auth.users), `display_name`, `colour`, `settings jsonb` (sticker multiplier, sticker rounding, low-stock threshold, stale-price days, re-sticker threshold %).
 
-**items** — `profile_id` (owner), `kind` (single / sealed / graded / other), `game`, `name`, `set_name`, `set_code`, `card_number`, `language` (EN, JA, zh-CN, zh-TW, …), `variant` (finish), `condition` (null for sealed), `grading_company`, `grade`, `sealed_type` (booster box, case, ETB, pack, …), `market_price_cents`, `market_price_updated_at`, `sticker_override_cents` (nullable), `stickered_price_cents` (price on the physical sticker), `location`, `notes`, `tags text[]`, `photo_path`, `low_stock_threshold`, `import_batch_id`, `deleted_at`.
+**items** — `profile_id` (owner), `kind` (single / sealed / graded / bulk / other; a `bulk` item is a lump-sum pool such as "bulk commons" with a manual value and no sticker), `game`, `name`, `set_name`, `set_code`, `card_number`, `language` (EN, JA, zh-CN, zh-TW, …), `variant` (finish), `condition` (null for sealed), `grading_company`, `grade`, `sealed_type` (booster box, case, ETB, pack, …), `market_price_cents`, `market_price_updated_at`, `sticker_override_cents` (nullable), `stickered_price_cents` (price on the physical sticker), `location`, `notes`, `tags text[]`, `photo_path`, `low_stock_threshold`, `import_batch_id`, `deleted_at`.
 - Sticker price is computed: `sticker_override_cents ?? round(market_price_cents × multiplier)`. One shared function in the client and one in SQL, tested against each other.
 - Quantity is not stored on the item. It is `sum(lots.qty_remaining)`.
 
-**lots** — `item_id`, `profile_id`, `acquired_at`, `qty_acquired`, `qty_remaining` (server-maintained), `unit_cost_cents`, `source` (purchase / trade-in / import / opening), `note`, `import_batch_id`, `deleted_at`.
+**lots** — `item_id`, `profile_id`, `acquired_at`, `qty_acquired`, `qty_remaining` (server-maintained), `unit_cost_cents` (**nullable**: opening-stock lots from the spreadsheet have no recorded cost; editing a lot's cost later updates the cost of goods sold on sales that consumed it), `source` (purchase / trade-in / import / opening), `note`, `import_batch_id`, `deleted_at`.
 
 **sales** — `sold_by_profile_id`, `show_id` (nullable), `sold_at`, `note`, `discount_cents`, `voided_at`, `voided_by`.
 
@@ -178,6 +178,28 @@ All tables have `id uuid`, `created_at`, `updated_at`, `created_by`, `updated_by
 
 Card metadata autocomplete from an external database, automatic price providers, printable price labels, barcode/camera scanning, a buylist calculator (offer X% of market), mobile layout, GST.
 
+## Existing inventory (Google Sheet "Inventory")
+
+Read on 2026-11-10. Layout: two side-by-side blocks (columns A–E and F–J), presumably one per person. Each has Cards / Market / Sticker, a Total, a Bulk figure and a Slabs total. About 48 rows in the left block, 52 in the right, plus 15 slabs in the left block.
+
+What this tells us:
+- **Sticker is already ~1.1 × market, rounded to the nearest $1** in the left block. The right block sometimes rounds up to $5 (Arbok $35 → $40, Steelix $35 → $40, Charizard 094/080 $40 → $45), which the manual sticker override and the $5 rounding option cover.
+- **"Bulk" is a dollar value, not a count** (left $1,750, right $1,254). The grand total is cards total + bulk, then slabs on top. So bulk needs to be a first-class lump-sum item (`kind = bulk`), and the dashboard totals must include it.
+- **Slabs have one price column**, not market and sticker. Import it as the market price with sticker computed, unless you tell us the slab price is already the asking price.
+- **No quantities, costs, conditions or languages.** Name, set number and variant are in one string ("Gengar TG06/TG30 LP", "Dialga PSA10 Origin"). Quantity appears once ("lucario SWSH 291 *8 35 each" = 8 at $35, entered as $256, which is not 8 × $35). Opening lots import with unknown cost.
+- **Other TCGs are already in there** (One Piece style names such as Whitebeard 005 and Kaido 062; "loki -119" is unidentified), confirming the multi-game model.
+- **Dirty data:** `30$` instead of `$30`, inconsistent case, typos (suicine, gyrados, Braxien), duplicate rows (Gold Star Greninja twice, Gengar TG06/TG30 twice, one marked LP), a Japanese slab ("Shaymin JP"), a CGC-style slab ("CCIC 10 GLACEON"), and ambiguous "(sealed)" tags on single cards.
+
+Migration approach:
+1. One-off importer built on the Phase 6 wizard, with a "Google Sheet block" preset: parse price strings, split name / number / variant / condition / grading where it can, flag the rest.
+2. Everything lands in a review table before import. Rows with problems (unparseable price, possible duplicate, quantity in the name, unclear "sealed") are highlighted and must be resolved or accepted.
+3. Imported as `source = opening` lots with null cost; the whole batch is undoable.
+4. After import the dashboard totals must equal the sheet's totals (cards + bulk, and slabs). Treat any mismatch as a failed migration.
+
+## Backend choice (Supabase vs Firebase)
+
+Decision stays **Supabase** unless the owner says otherwise. Firebase is workable, but Firestore has no joins or SQL, so the sales, lots and profit reports and the audit trail would be rebuilt as application code, and server-side triggers need Cloud Functions on the paid plan. Postgres RLS also lets us test the permission rules directly. Firebase's real advantage is built-in offline persistence and no free-tier pausing. If we switch, the sync engine is simplified and FIFO cost is computed at read time from lots and sale lines.
+
 ## Build order
 
 Each phase ends with passing tests and a working app.
@@ -188,7 +210,7 @@ Each phase ends with passing tests and a working app.
 3. **Auth and shell.** Login, session persistence, profile switcher, PWA service worker.
 4. **Inventory.** Table, inline edit, quick add, lots, bulk actions, soft delete, Trash, undo stack, item drawer, audit log screen.
 5. **Sales.** Quick sell, multi-line, payments, void/undo. **Tests: sale flow unit + Playwright end to end.**
-6. **Import.** Wizard, Collectr preset, generic mapping, duplicate matching, import undo.
+6. **Import.** Wizard, Collectr preset, generic mapping, duplicate matching, import undo. Plus the one-off migration of the existing Google Sheet (see "Existing inventory" below).
 7. **Pricing.** Sticker computation and override, price history chart, Reprice mode, stale and re-sticker flags.
 8. **Shows.** CRUD, Show mode, expenses, float, summary and settlement.
 9. **Dashboard and reports.** Metrics, sales log, profit per card, CSV export.
@@ -214,7 +236,7 @@ Each phase ends with passing tests and a working app.
 - A Supabase project (URL, anon key, and a service-role key for migrations and CI only) and a Vercel project.
 - The two login emails and display names.
 - A real Collectr CSV export to build and test the import preset against.
-- Confirmation of the five assumptions near the top of this file.
+- Which block of the existing sheet belongs to which person (see below), and any purchase costs you can recover.
 
 ## Conventions
 
