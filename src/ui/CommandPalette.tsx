@@ -49,7 +49,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     return commands.filter((c) => words.every((w) => c.label.toLowerCase().includes(w)))
   }, [commands, q])
 
-  const items = useMemo(() => (q.trim().length >= 2 ? rows.filter((r) => matchesSearch(r.item, q)).slice(0, 6) : []), [rows, q])
+  const items = useMemo(() => (q.trim().length >= 2 ? rows.filter((r) => r.item.kind !== 'bulk' && matchesSearch(r.item, q)).slice(0, 6) : []), [rows, q])
 
   const entries: { key: string; label: string; right?: string; run: () => void }[] = [
     ...shownCommands.map((c) => ({ key: c.id, label: c.label, right: c.hint, run: c.run })),

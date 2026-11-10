@@ -30,7 +30,7 @@ export function ShowMode() {
 
   const results = useMemo(() => {
     if (!query.trim()) return []
-    return rows.filter((r) => r.qty > 0 && matchesSearch(r.item, query)).slice(0, 10)
+    return rows.filter((r) => r.item.kind !== 'bulk' && r.qty > 0 && matchesSearch(r.item, query)).slice(0, 10)
   }, [rows, query])
   useEffect(() => setCursor(0), [query])
   useEffect(() => searchRef.current?.focus(), [])

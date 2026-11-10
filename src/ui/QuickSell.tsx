@@ -25,7 +25,7 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
   const priceRef = useRef<HTMLInputElement>(null)
 
   const results = useMemo(
-    () => rows.filter((r) => r.qty > 0 && matchesSearch(r.item, query)).slice(0, 8),
+    () => rows.filter((r) => r.item.kind !== 'bulk' && r.qty > 0 && matchesSearch(r.item, query)).slice(0, 8),
     [rows, query],
   )
   useEffect(() => setCursor(0), [query])

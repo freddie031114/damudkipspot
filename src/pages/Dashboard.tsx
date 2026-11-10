@@ -22,7 +22,9 @@ const DAY = 86_400_000
 export function Dashboard() {
   const { rows, raw } = useStore()
   const { view, openItem } = useUi()
-  const scoped = useMemo(() => rows.filter((r) => r.item.profileId === view), [rows, view])
+  const mine = useMemo(() => rows.filter((r) => r.item.profileId === view), [rows, view])
+  const scoped = useMemo(() => mine.filter((r) => r.item.kind !== 'bulk'), [mine])
+  const bulkCents = useMemo(() => mine.filter((r) => r.item.kind === 'bulk').reduce((n, r) => n + r.marketValueCents, 0), [mine])
 
   const stats = useMemo(() => {
     const priced = scoped.filter((r) => r.qty > 0)
@@ -82,7 +84,7 @@ export function Dashboard() {
       <h1 className="mb-3 text-xl font-semibold">Dashboard · {title}</h1>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Tile label="Market value" value={formatAud(stats.market)} sub={`${stats.items} items, ${stats.units} units`} />
-        <Tile label="Sticker value" value={formatAud(stats.sticker)} />
+        <Tile label="Sticker value" value={formatAud(stats.sticker)} sub={bulkCents > 0 ? `Plus ${formatAud(bulkCents)} of bulk cards` : undefined} />
         <Tile label="Known cost" value={formatAud(stats.cost)} sub={stats.unknownCostItems ? `${stats.unknownCostItems} items have no cost recorded` : undefined} />
         <Tile label="Unrealised profit" value={formatAud(stats.unrealised)} sub="Items with a recorded cost only" />
         <Tile label="Sales, all time" value={formatAud(totals.revenueCents)} sub={`${totals.count} lines · profit ${formatAud(totals.profitCents)}`} />

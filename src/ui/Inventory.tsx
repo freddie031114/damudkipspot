@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { adjustStock, combineChanges, deleteItems, markStickered, updateItem } from '../data/changes'
+import { adjustStock, combineChanges, createItem, deleteItems, markStickered, updateItem } from '../data/changes'
 import { matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
@@ -49,6 +49,36 @@ function EditableCell({ display, initial, onCommit, disabled, align = 'left', la
   )
 }
 
+/** Bulk cards are just a lump-sum value per person, kept out of the card list. */
+function BulkChip({ profile }: { profile: ProfileId }) {
+  const { rows, apply, notify } = useStore()
+  const ctx = useChangeCtx()
+  const bulk = rows.filter((r) => r.item.kind === 'bulk' && r.item.profileId === profile)
+  const cents = bulk.reduce((n, r) => n + r.marketValueCents, 0)
+  const first = bulk[0]
+
+  function save(v: string) {
+    const c = parseMoney(v)
+    if (c === null || c < 0) return notify('Enter a valid amount', true)
+    if (c === cents) return
+    try {
+      if (first && first.qty > 0) apply(updateItem(ctx(), first.item, { marketPriceCents: Math.round(c / first.qty) }))
+      else apply(createItem(ctx(), { profileId: profile, name: 'Bulk cards', kind: 'bulk', marketPriceCents: c }, { qty: 1, unitCostCents: null, source: 'opening' }))
+    } catch (e) {
+      notify((e as Error).message, true)
+    }
+  }
+
+  return (
+    <span className="flex flex-col leading-tight" aria-label="Bulk cards">
+      <strong className="text-lg font-semibold">
+        <EditableCell label="bulk cards value" initial={(cents / 100).toFixed(2)} display={formatAud(cents)} onCommit={save} />
+      </strong>
+      <span className="px-1 text-[11px] uppercase tracking-wider opacity-60">Bulk cards (click to edit)</span>
+    </span>
+  )
+}
+
 export function Inventory({ view, search, onSell, selected, setSelected }: {
   view: View; search: string; onSell: (r: InventoryRow) => void
   selected: Set<string>; setSelected: (s: Set<string>) => void
@@ -61,7 +91,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const [onlySticker, setOnlySticker] = useState(false)
 
   const visible = useMemo(() => {
-    const list = rows.filter((r) => r.item.profileId === view && matchesSearch(r.item, search) && (!onlySticker || r.needsSticker))
+    const list = rows.filter((r) => r.item.kind !== 'bulk' && r.item.profileId === view && matchesSearch(r.item, search) && (!onlySticker || r.needsSticker))
     const val = (r: InventoryRow): string | number => {
       switch (sort.key) {
         case 'name': return r.item.name.toLowerCase()
@@ -123,6 +153,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
         ] as const).map(([v, l]) => (
           <span key={l} className="flex flex-col leading-tight"><strong className="text-lg font-semibold">{v}</strong><span className="text-[11px] uppercase tracking-wider opacity-60">{l}</span></span>
         ))}
+        <BulkChip profile={view} />
         <span className="flex flex-col leading-tight opacity-80"><strong className="text-lg font-semibold">{formatAud(totals.known)}</strong><span className="text-[11px] uppercase tracking-wider opacity-60">Known cost{totals.unknown > 0 && ` · ${totals.unknown} without`}</span></span>
         {(totals.resticker > 0 || onlySticker) && (
           <label className="flex items-center gap-1 text-accent-ink"><input type="checkbox" checked={onlySticker} onChange={(e) => setOnlySticker(e.target.checked)} /> Needs re-sticker ({totals.resticker})</label>
