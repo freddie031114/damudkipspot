@@ -12,7 +12,8 @@ import { useUi } from './UiContext'
 export type View = ProfileId
 type SortKey = 'name' | 'qty' | 'market' | 'sticker' | 'value' | 'location'
 
-const COLS = '28px minmax(170px,2fr) minmax(170px,1.8fr) 96px 56px 96px 96px 104px minmax(80px,1fr) 170px'
+// One "Card" column holds the name plus its number, set, variant, language, condition and flags.
+const COLS = '24px minmax(280px,6fr) 52px 84px 84px 92px minmax(72px,1fr) 104px'
 
 function EditableCell({ display, initial, onCommit, disabled, align = 'left', label }: {
   display: ReactNode; initial: string; onCommit: (v: string) => void; disabled?: boolean; align?: 'left' | 'right'; label: string
@@ -87,7 +88,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   }), [visible])
 
   const parentRef = useRef<HTMLDivElement>(null)
-  const virt = useVirtualizer({ count: visible.length, getScrollElement: () => parentRef.current, estimateSize: () => 34, overscan: 12 })
+  const virt = useVirtualizer({ count: visible.length, getScrollElement: () => parentRef.current, estimateSize: () => 30, overscan: 12 })
 
   const run = (fn: () => ReturnType<typeof updateItem>) => {
     try { apply(fn()) } catch (e) { notify((e as Error).message, true) }
@@ -112,7 +113,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto p-4 md:p-6">
-     <div className="flex min-h-0 min-w-[960px] flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+     <div className="flex min-h-0 min-w-[820px] flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
       <div className="flex flex-wrap items-center gap-x-7 gap-y-2 border-b border-line px-5 py-3 text-sm" aria-label="Totals">
         {([
           [String(visible.length), 'items'],
@@ -151,12 +152,12 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
         )}
       </div>
 
-      <div className="grid items-center gap-2 border-b border-line bg-hover/50 px-5 py-2 text-[11px] font-medium uppercase tracking-wider text-ink/65" style={{ gridTemplateColumns: COLS }}>
+      <div className="grid items-center gap-2 border-b border-line bg-hover/50 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink/65" style={{ gridTemplateColumns: COLS }}>
         <input type="checkbox" aria-label="Select all" checked={allSelected}
           onChange={() => setSelected(allSelected ? new Set() : new Set(visible.map((r) => r.item.id)))} />
-        {header('name', 'Name')}<span className="px-1">Set / #</span><span className="px-1">Lang · Cond</span>
+        {header('name', 'Card')}
         {header('qty', 'Qty', true)}{header('market', 'Market', true)}{header('sticker', 'Sticker', true)}{header('value', 'Value', true)}
-        {header('location', 'Location')}<span className="px-1">Flags</span>
+        {header('location', 'Location')}<span className="sr-only">Actions</span>
       </div>
 
       <div ref={parentRef} className="min-h-0 flex-1 overflow-auto" data-testid="inventory-scroll">
@@ -166,17 +167,23 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
           {virt.getVirtualItems().map((v) => {
             const r = visible[v.index]!
             const it = r.item
-            const flags = [r.oversold > 0 && `Oversold ${r.oversold}`, r.lowStock && 'Low', r.needsSticker && 'Re-sticker', r.stalePrice && 'Stale', r.costUnknown && 'No cost'].filter(Boolean) as string[]
+            const flags = [r.oversold > 0 && `Oversold ${r.oversold}`, r.lowStock && 'Low', r.needsSticker && 'Re-sticker', r.stalePrice && 'Stale'].filter(Boolean) as string[]
             return (
-              <div key={it.id} role="row" className="group absolute left-0 grid w-full items-center gap-2 border-b border-line/60 px-5 text-sm transition-colors hover:bg-hover/70"
+              <div key={it.id} role="row" className="group absolute left-0 grid w-full items-center gap-2 border-b border-line/60 px-4 text-[13px] transition-colors hover:bg-hover/70"
                 style={{ gridTemplateColumns: COLS, height: v.size, transform: `translateY(${v.start}px)` }}>
                 <input type="checkbox" aria-label={`Select ${it.name}`} checked={selected.has(it.id)}
                   onChange={() => { const s = new Set(selected); if (s.has(it.id)) s.delete(it.id); else s.add(it.id); setSelected(s) }} />
-                <EditableCell label={`name of ${it.name}`} initial={it.name}
-                  display={it.name}
-                  onCommit={(v) => run(() => updateItem(ctx(), it, { name: v.trim() }))} />
-                <div className="truncate px-1 opacity-80">{[it.setName, it.cardNumber, it.variant].filter(Boolean).join(' · ')}</div>
-                <div className="truncate px-1 opacity-80">{[it.language, it.condition || it.grade && `${it.gradingCompany} ${it.grade}`].filter(Boolean).join(' · ')}</div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="max-w-[55%] shrink-0 font-medium">
+                    <EditableCell label={`name of ${it.name}`} initial={it.name} display={it.name}
+                      onCommit={(v) => run(() => updateItem(ctx(), it, { name: v.trim() }))} />
+                  </div>
+                  {it.gradingCompany && it.grade && <span className="shrink-0 rounded bg-chip px-1.5 text-[11px] font-semibold">{it.gradingCompany} {it.grade}</span>}
+                  <span className="min-w-0 flex-1 cursor-pointer truncate text-xs opacity-60 hover:opacity-100" title="Open details" onClick={() => openItem(it.id)}>
+                    {[it.cardNumber, it.setName, it.variant, it.language !== 'EN' && it.language, it.condition].filter(Boolean).join(' · ')}
+                  </span>
+                  {flags.map((f) => <span key={f} className="shrink-0 rounded-full bg-accent/15 px-2 text-[11px] font-medium text-accent-ink">{f}</span>)}
+                </div>
                 <EditableCell label={`quantity of ${it.name}`} align="right" initial={String(r.qty)} display={r.qty}
                   onCommit={(v) => {
                     const target = Number(v)
@@ -192,10 +199,9 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
                 <div className="px-1 text-right">{formatAud(r.marketValueCents)}</div>
                 <EditableCell label={`location of ${it.name}`} initial={it.location} display={it.location || <span className="opacity-40">—</span>}
                   onCommit={(v) => run(() => updateItem(ctx(), it, { location: v.trim() }))} />
-                <div className="flex items-center gap-1 truncate text-xs">
-                  {flags.map((f) => <span key={f} className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent-ink">{f}</span>)}
-                  <button className="ml-auto rounded px-1.5 text-xs underline opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label={`Open ${it.name}`} onClick={() => openItem(it.id)}>Open</button>
-                  <button className={`${btnCls} !px-2 !py-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100`} aria-label={`Sell ${it.name}`} disabled={r.qty < 1} onClick={() => onSell(r)}>Sell</button>
+                <div className="flex items-center justify-end gap-1 text-xs">
+                  <button className="rounded px-1.5 underline opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label={`Open ${it.name}`} onClick={() => openItem(it.id)}>Open</button>
+                  <button className={`${btnCls} !px-2 !py-0.5 !text-xs opacity-0 group-hover:opacity-100 focus:opacity-100`} aria-label={`Sell ${it.name}`} disabled={r.qty < 1} onClick={() => onSell(r)}>Sell</button>
                 </div>
               </div>
             )

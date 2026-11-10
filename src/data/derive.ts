@@ -117,7 +117,7 @@ export function buildInventory(d: InventoryData, settings: Settings | SettingsFo
 export function matchesSearch(item: Item, query: string): boolean {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   if (words.length === 0) return true
-  const hay = [item.name, item.setName, item.setCode, item.cardNumber, item.variant, item.language, item.condition, item.grade, item.location, item.notes, item.tags.join(' ')]
+  const hay = [item.name, item.setName, item.setCode, item.cardNumber, item.variant, item.language, item.condition, item.gradingCompany, item.grade, item.kind, item.game, item.location, item.notes, item.tags.join(' ')]
     .join(' ')
     .toLowerCase()
   return words.every((w) => hay.includes(w))

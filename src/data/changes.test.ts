@@ -128,5 +128,9 @@ describe('derived flags and search', () => {
     expect(matchesSearch(it, 'gengar binder')).toBe(true)
     expect(matchesSearch(it, 'pikachu')).toBe(false)
     expect(matchesSearch(it, '')).toBe(true)
+    const slab = { name: 'Charizard 20th Ann', gradingCompany: 'PSA', grade: '10', kind: 'graded', game: 'Pokémon', setName: '', cardNumber: '', variant: '', language: 'EN', condition: '', location: '', notes: '', tags: [], setCode: '' } as unknown as Item
+    expect(matchesSearch(slab, 'psa 10')).toBe(true)
+    expect(matchesSearch(slab, 'psa 9')).toBe(false)
+    expect(matchesSearch(slab, 'graded')).toBe(true)
   })
 })
