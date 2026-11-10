@@ -1,0 +1,77 @@
+rules_version = '2';
+
+// Both people share ONE login, so these rules keep outsiders out. They cannot separate
+// the two profiles from each other (see CLAUDE.md).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email == 'damudkipspot@gmail.com';
+    }
+
+    function validProfile(id) { return id in ['p1', 'p2']; }
+
+    // Never allow hard deletes. Everything is soft-deleted with deletedAt.
+    match /{collection}/{doc} {
+      allow delete: if false;
+    }
+
+    match /profiles/{id} {
+      allow read: if isOwner();
+      allow create, update: if isOwner() && validProfile(id);
+    }
+
+    match /items/{id} {
+      allow read: if isOwner();
+      allow create, update: if isOwner()
+        && validProfile(request.resource.data.profileId)
+        && (request.resource.data.marketPriceCents is int)
+        && request.resource.data.marketPriceCents >= 0;
+    }
+
+    match /lots/{id} {
+      allow read: if isOwner();
+      allow create, update: if isOwner()
+        && validProfile(request.resource.data.profileId)
+        && request.resource.data.qty is int
+        && request.resource.data.qty > 0
+        && (request.resource.data.unitCostCents == null
+            || (request.resource.data.unitCostCents is int && request.resource.data.unitCostCents >= 0));
+    }
+
+    // A sale is immutable once written, except for voiding it.
+    match /sales/{id} {
+      allow read: if isOwner();
+      allow create: if isOwner()
+        && validProfile(request.resource.data.soldByProfileId)
+        && request.resource.data.lines is list
+        && request.resource.data.lines.size() > 0
+        && !('voidedAt' in request.resource.data && request.resource.data.voidedAt != null);
+      allow update: if isOwner()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voidedAt', 'voidedBy', 'updatedAt', 'updatedBy'])
+        && resource.data.get('voidedAt', null) == null;
+    }
+
+    match /adjustments/{id} {
+      allow read: if isOwner();
+      allow create: if isOwner() && request.resource.data.qtyDelta is int && request.resource.data.qtyDelta != 0;
+      allow update: if isOwner();
+    }
+
+    match /priceHistory/{id} {
+      allow read: if isOwner();
+      allow create: if isOwner();
+    }
+
+    match /auditLog/{id} {
+      allow read: if isOwner();
+      allow create: if isOwner() && validProfile(request.resource.data.actorProfileId);
+    }
+
+    match /{collection}/{id} {
+      allow read: if isOwner() && collection in ['shows', 'showExpenses', 'savedViews', 'importBatches'];
+      allow create, update: if isOwner() && collection in ['shows', 'showExpenses', 'savedViews', 'importBatches'];
+    }
+  }
+}

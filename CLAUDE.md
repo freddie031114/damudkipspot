@@ -2,21 +2,21 @@
 
 Shared inventory, sales and show tracker for two trading card vendors in Australia. Desktop-first web app used on a laptop at the table and at home. Mainly Pokémon TCG singles and sealed product (including Simplified Chinese), but nothing in the model is Pokémon-specific.
 
-**Status: plan agreed, no code written yet.** Build in the order given under "Build order". Update this file when a decision changes.
+**Status: plan agreed; building in the order under "Build order". Backend switched from Supabase to Firebase (owner's choice).** Update this file when a decision changes.
 
 ## Agreed decisions
 
 | Topic | Decision |
 |---|---|
-| Users | Exactly two people, each with their own login and profile. Signups disabled; the `profiles` table is the allowlist. |
+| Users | Two people share **one login** (`damudkipspot@gmail.com`) and each use their own profile (`p1` owner, `p2` friend), chosen in-app. |
 | Cross-profile access | **Always editable.** Either person can view and edit either profile's inventory, sales and prices. No read-only mode, no per-profile toggle. |
-| Attribution | Every row and audit entry records the authenticated actor. Sales also record who sold it and whose stock it was. |
+| Attribution | Every row and audit entry records the acting profile chosen in the app (not tamper-proof, since the login is shared). Sales also record who sold it and whose stock it was. |
 | Selling each other's stock | Allowed any time (follows from "always editable"). Stock and revenue belong to the item's owner; the sale records the seller. |
 | Combined view | Read-only merged view of both inventories (total stock, total value). Editing happens in a single-profile view. |
 | Pricing | **All prices entered manually, in AUD.** No pokemontcg.io, no FX conversion in v1. |
 | Sticker price | Sticker (asking) price = market price × 1.10. The multiplier is a setting per profile. |
 | Cost basis | **Purchase lots, FIFO.** Each purchase is a lot with its own unit cost and date; sales consume the oldest lot first. |
-| Auth | Email + password. Magic links need email access on show wifi, so they are not used. |
+| Auth / backend | Firebase Auth email + password, Cloud Firestore, free Spark plan, no Cloud Functions. Hosted on Vercel. |
 | Money | Integer cents everywhere, AUD only. No floats. |
 | Deletes | Soft delete only (`deleted_at`). No hard deletes through the API. |
 
@@ -30,107 +30,88 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 
 ## Tech stack
 
-- **App:** React + Vite + TypeScript (strict). Tailwind + shadcn/ui (Radix) for components and dark mode.
-- **Tables:** TanStack Table + TanStack Virtual. All filtering, sorting and search run in memory against the local store.
-- **Local store:** Dexie (IndexedDB) with `useLiveQuery`. The UI reads only from Dexie, never directly from the network.
-- **Backend:** Supabase (Auth, Postgres, RLS, Storage, Realtime). Hosted on Vercel as a static SPA.
-- **Offline shell:** `vite-plugin-pwa` service worker so the app loads with no connection. Without it a page reload at a show would break the app.
+- **App:** React + Vite + TypeScript (strict). Tailwind CSS for styling and dark mode; Radix primitives where needed.
+- **Tables:** TanStack Table + TanStack Virtual. Filtering, sorting and search run in memory over the live Firestore data.
+- **Backend:** **Firebase** on the free Spark plan: Authentication (email + password), Cloud Firestore, Storage (photos, later). **No Cloud Functions** (they need the paid plan), so all logic runs in the client and Firestore security rules.
+- **Hosting:** Vercel, static SPA with a rewrite to `index.html`. Firebase is only used as the backend.
+- **Offline:** Firestore's built-in persistent cache (`persistentLocalCache` + multi-tab manager) holds a local copy and queues writes while offline, replaying them on reconnect. Plus `vite-plugin-pwa` so the app shell loads with no connection.
 - **Other:** Zod (validation), PapaParse (CSV), Recharts (charts), cmdk (command palette).
-- **Tests:** Vitest + Testing Library + `fake-indexeddb` for unit and sync tests; SQL and RLS tests against Postgres; Playwright for the sale flow end to end.
+- **Tests:** Vitest for the pure domain logic (money, sticker, FIFO, stock, sale, CSV parsing). Firestore security rules tested against the Firebase emulator (needs Java) in CI.
 
 ### Why this differs from the original brief
 
-- **Local-first instead of "queue writes when offline".** Reading from the network and only queueing writes gives two code paths and a slow table. Reading always from IndexedDB gives instant search and makes offline the normal path, not a special case.
-- **Stock is derived, not a mutable number.** Quantity = sum of remaining lot quantities, changed only by appended events (lot added, sale, adjustment, void). Two laptops selling the same card offline both succeed and both count, which a last-write-wins quantity field cannot do.
-- **The price-provider module shrinks** to an interface with one `ManualProvider`, because all prices are manual. The interface stays so a real provider can be added later.
+- **One shared login, two profiles.** Both people sign in as `damudkipspot@gmail.com`; there is no per-user identity in Firebase. Profile ("Me" / "Friend") is an in-app switch remembered on that device. Attribution (who sold it, who edited it) is therefore the acting profile chosen in the app, which is honest bookkeeping, not tamper-proof security. Cross-profile permission rules from the original brief do not exist: everything is editable by both.
+- **Stock is derived, not a stored number.** Quantity = lots received − sales − adjustments, computed from append-only records. Two laptops selling the same card offline both record a sale and nothing is overwritten. This replaces the custom sync engine and `apply_ops` design.
+- **FIFO cost is computed at read time** from lots and sales (a pure function), not written by a server. With no server, there is no allocation step that can drift.
+- **The price-provider module shrinks** to an interface with one `ManualProvider`, since all prices are manual.
 
 ## Architecture
 
 ```
-React UI  ──reads──▶  Dexie (IndexedDB)  ◀──pull (changed rows)──  Supabase Postgres
-    │                      ▲                                            ▲
-    └──mutation──▶ apply locally + append to outbox ──push (RPC)────────┘
+React UI ◀── onSnapshot (live queries) ── Firestore local cache (IndexedDB) ◀──sync──▶ Firestore
+   │                                              ▲
+   └── writeBatch (change + audit entry) ─────────┘   (queued automatically when offline)
 ```
 
-### Writes
-
-- Every mutation is an **op**: `{ op_id (uuid), type, payload, actor, created_at }`. It is applied to Dexie immediately and appended to an `outbox` table in the same Dexie transaction.
-- The sync loop pushes ops in order through a single Postgres RPC, `apply_ops(ops jsonb)`. Each op runs in its own savepoint.
-- **Idempotency:** the server records each `op_id` in `applied_ops`. A replayed op returns the stored result and changes nothing.
-- All row IDs are client-generated UUIDs, so creates are safe to retry.
-- A rejected op (validation failure) is moved to a visible "sync problems" list with a retry/discard choice. It is never silently dropped.
-
-Op types: `item.create`, `item.update`, `item.delete`, `item.restore`, `lot.add`, `lot.update`, `lot.delete`, `stock.adjust`, `sale.create`, `sale.void`, `show.*`, `expense.*`, `view.*`, `settings.update`.
-
-### Reads and sync
-
-- Pull per table: rows where `updated_at >= cursor − 30s`, upserted into Dexie. The overlap makes missed rows from concurrent transactions harmless because upserts are idempotent.
-- Supabase Realtime is used only as a nudge to pull sooner. Correctness never depends on it.
-- Triggers: on app start, on `online` event, after each push, on Realtime nudge, every 60s while online.
-- A status pill always shows: online/offline, number of queued ops, last synced time.
+- **Reads:** the app subscribes to each collection once (`onSnapshot`) and keeps the results in an in-memory store. Components read the store, never Firestore directly. Thousands of items filter instantly in memory.
+- **Writes:** every change is one `writeBatch` that contains the data change **and** its `auditLog` entry, so they succeed or fail together, online or offline. IDs are generated on the client (`crypto.randomUUID()`), so retries are safe.
+- **Sales are one document**, with `lines[]` and `payments[]` embedded, so a sale can never be half-saved. A sale is never edited; undoing sets `voidedAt`.
+- **Deletes are soft** (`deletedAt`). Rules forbid hard deletes on every collection.
+- **Status pill:** shows online/offline and whether writes are still pending (`hasPendingWrites`, `waitForPendingWrites`).
+- **Offline login:** Firebase Auth persists the session locally; the app opens and works offline. Signing out while writes are pending is blocked behind a warning.
+- **Shared laptop:** Show mode has a "selling as" switch. The sale records `soldByProfileId`.
 
 ### Conflict handling
 
 | Case | Rule |
 |---|---|
-| Both edit different fields of one item | Both kept. `item.update` carries only changed fields. |
-| Both edit the same field | Last to reach the server wins. The audit log keeps the overwritten value. |
-| Both sell the same item offline | Both sales recorded. Server allocates lots FIFO in arrival order. |
-| Sales exceed stock | Sale still recorded (the card physically left the table). Unallocated quantity is flagged "oversold, needs review" with unknown cost. |
+| Both edit different fields of one item | Both kept. Updates write only changed fields. |
+| Both edit the same field | Last write to reach Firestore wins. The audit log keeps before/after values. |
+| Both sell the same item offline | Both sales recorded; stock is derived so nothing is lost. |
+| Sales exceed stock | Sale stays recorded (the card physically left). Item shows "oversold, needs review", unallocated quantity has unknown cost. |
 | Edit to an item the other person deleted | Edit applies, item stays deleted, restorable from Trash. |
-| Sale voided twice | Second void is a no-op. |
+| Sale voided twice | Voiding an already-voided sale is a no-op. |
 
-**FIFO allocation is done by the server** inside `apply_ops`, in one transaction, writing `lot_allocations`. The client computes a provisional allocation for display and replaces it with the server's result after sync. This is the only place client and server can briefly disagree, and it only affects displayed cost, never stock counts or revenue.
+### FIFO and stock (pure functions in `src/domain`)
 
-### Auth and offline
+- Supply per item: lots (ordered by `acquiredAt`, then `createdAt`), plus positive adjustments as cost-unknown lots.
+- Demand per item: non-voided sale lines and negative adjustments, ordered by time (`soldAt` / `createdAt`).
+- Demand consumes the oldest remaining supply first. Allocation ignores whether a lot was entered after the sale, which keeps results deterministic when devices sync late.
+- Output: on-hand quantity, remaining value at cost, cost of goods sold per sale line, unallocated (oversold) quantity, and a "cost unknown" flag when any consumed supply has null cost.
 
-- The Supabase session persists locally; the app boots from the service worker cache and Dexie without network.
-- If the token expires offline, the app keeps working and queues ops; it re-authenticates when back online.
-- Logging out with queued ops is blocked behind an explicit warning, because logging back in needs network.
-- **One shared laptop at a table:** Show mode has a "selling as" switch so the second person does not need to log in. The sale records `sold_by` (selected) and the audit log records the authenticated actor.
+### Firestore cost awareness (free tier: 50k reads, 20k writes per day)
 
-## Data model
+- Live listeners resume from the local cache, so only changed documents count as reads after the first load.
+- Avoid repeated full re-reads: no polling, no "refresh all" button that re-queries.
+- Keep `priceHistory` and `auditLog` out of the always-on subscriptions; load them per item or per screen with limits.
+- Bulk imports use batches of at most 400 writes.
 
-All tables have `id uuid`, `created_at`, `updated_at`, `created_by`, `updated_by`. `created_by`/`updated_by`/`updated_at` are set by triggers from `auth.uid()` and cannot be supplied by the client.
+## Data model (Firestore collections)
 
-**profiles** — `user_id` (auth.users), `display_name`, `colour`, `settings jsonb` (sticker multiplier, sticker rounding, low-stock threshold, stale-price days, re-sticker threshold %).
+Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (acting profile id). Money is integer cents. Profile ids are `p1` (owner, the right-hand block of the old sheet) and `p2` (friend, the left-hand block). Display names are editable in Settings.
 
-**items** — `profile_id` (owner), `kind` (single / sealed / graded / bulk / other; a `bulk` item is a lump-sum pool such as "bulk commons" with a manual value and no sticker), `game`, `name`, `set_name`, `set_code`, `card_number`, `language` (EN, JA, zh-CN, zh-TW, …), `variant` (finish), `condition` (null for sealed), `grading_company`, `grade`, `sealed_type` (booster box, case, ETB, pack, …), `market_price_cents`, `market_price_updated_at`, `sticker_override_cents` (nullable), `stickered_price_cents` (price on the physical sticker), `location`, `notes`, `tags text[]`, `photo_path`, `low_stock_threshold`, `import_batch_id`, `deleted_at`.
-- Sticker price is computed: `sticker_override_cents ?? round(market_price_cents × multiplier)`. One shared function in the client and one in SQL, tested against each other.
-- Quantity is not stored on the item. It is `sum(lots.qty_remaining)`.
+- **profiles/{p1|p2}**: `displayName`, `colour`, `settings` (sticker multiplier, sticker rounding, low-stock threshold, stale-price days, re-sticker threshold %).
+- **items**: `profileId`, `kind` (single / sealed / graded / bulk / other; `bulk` is a lump-sum pool with a manual value and no sticker), `game`, `name`, `setName`, `setCode`, `cardNumber`, `language`, `variant`, `condition`, `gradingCompany`, `grade`, `sealedType`, `marketPriceCents`, `marketPriceUpdatedAt`, `stickerOverrideCents` (nullable), `stickeredPriceCents` (price on the physical sticker), `location`, `notes`, `tags`, `photoPath`, `lowStockThreshold`, `importBatchId`, `deletedAt`.
+  - Sticker price = `stickerOverrideCents ?? round(marketPriceCents × multiplier)` using the profile's rounding rule.
+  - Quantity is not stored on the item.
+- **lots**: `itemId`, `profileId`, `acquiredAt`, `qty`, `unitCostCents` (**nullable**, as opening stock has no recorded cost), `source` (purchase / trade-in / import / opening), `note`, `importBatchId`, `deletedAt`.
+- **sales**: `soldByProfileId`, `showId`, `soldAt`, `note`, `discountCents`, `lines[]` (`itemId`, `ownerProfileId`, `qty`, `stickerPriceCents`, `unitPriceCents`), `payments[]` (`method`: cash / card / payid / trade, `amountCents`, `receivedByProfileId`), `voidedAt`, `voidedBy`.
+- **adjustments**: `itemId`, `qtyDelta`, `reason` (damaged / lost / kept / count correction / found), `note`.
+- **priceHistory**: `itemId`, `marketPriceCents`, `recordedAt`, `recordedBy`, `source`. Written in the same batch as any market price change.
+- **shows**: `name`, `startsOn`, `endsOn`, `venue`, `tableFeeCents`, `status` (planned / live / closed), `notes`, `participants[]` (`profileId`, `openingFloatCents`, `closingCashCents`).
+- **showExpenses**: `showId`, `description`, `amountCents`, `paidByProfileId`, `split` (equal / custom), `splitPct`.
+- **savedViews**: `profileId`, `name`, `screen`, `config`.
+- **importBatches**: `profileId`, `filename`, `mapping`, `rowCount`, `undoneAt`.
+- **auditLog**: `at`, `actorProfileId`, `targetProfileId`, `entity`, `entityId`, `action`, `diff` (before/after), `showId`. Create-only.
 
-**lots** — `item_id`, `profile_id`, `acquired_at`, `qty_acquired`, `qty_remaining` (server-maintained), `unit_cost_cents` (**nullable**: opening-stock lots from the spreadsheet have no recorded cost; editing a lot's cost later updates the cost of goods sold on sales that consumed it), `source` (purchase / trade-in / import / opening), `note`, `import_batch_id`, `deleted_at`.
+### Security rules
 
-**sales** — `sold_by_profile_id`, `show_id` (nullable), `sold_at`, `note`, `discount_cents`, `voided_at`, `voided_by`.
-
-**sale_lines** — `sale_id`, `item_id`, `owner_profile_id`, `qty`, `sticker_price_cents` (at time of sale), `unit_price_cents` (actual), `line_total_cents`. A sale can contain items from both profiles.
-
-**sale_payments** — `sale_id`, `method` (cash / card / PayID / trade), `amount_cents`, `received_by_profile_id`. Supports split payments.
-
-**lot_allocations** — `lot_id`, `sale_line_id` or `adjustment_id`, `qty`, `unit_cost_cents`. Source of truth for cost of goods sold.
-
-**adjustments** — `item_id`, `qty_delta`, `reason` (damaged / lost / kept for collection / count correction / found), `note`. Negative adjustments consume lots FIFO.
-
-**price_history** — `item_id`, `market_price_cents`, `recorded_at`, `recorded_by`, `source`. Written by trigger whenever market price changes.
-
-**shows** — `name`, `starts_on`, `ends_on`, `venue`, `table_fee_cents`, `status` (planned / live / closed), `notes`. **show_participants** — `show_id`, `profile_id`, `opening_float_cents`, `closing_cash_cents`. **show_expenses** — `show_id`, `description`, `amount_cents`, `paid_by_profile_id`, `split` (equal / custom), `split_pct jsonb`.
-
-**saved_views** — `profile_id`, `name`, `screen`, `config jsonb` (columns, filters, sort).
-
-**import_batches** — `profile_id`, `filename`, `mapping jsonb`, `row_count`, `undone_at`.
-
-**audit_log** — `at`, `actor_profile_id`, `target_profile_id`, `entity`, `entity_id`, `action`, `diff jsonb` (before/after of changed fields), `op_id`, `show_id`. Written only by triggers.
-
-**applied_ops** — `op_id` (pk), `actor`, `applied_at`, `result jsonb`.
-
-### Row-level security
-
-- `is_member()` = the caller has a row in `profiles`.
-- Data tables: members can select, insert and update rows of either profile. No delete policy on any table.
-- `audit_log`, `price_history`, `lot_allocations`, `applied_ops`: select only for members; written by triggers and security-definer functions.
-- `profiles`: members read both; each user updates only their own row.
-- Non-members and anonymous callers: nothing.
-- Storage bucket for photos: private, members only.
+- Only the shared login can read or write anything: `request.auth.token.email == 'damudkipspot@gmail.com'`. Everyone else, including other signed-in Firebase users, gets nothing.
+- No `delete` on any collection. `auditLog` is create-only (no update).
+- Sales: after creation, only `voidedAt` / `voidedBy` may change.
+- Light validation on writes (money fields are integers, `profileId` is `p1` or `p2`).
+- In the Firebase console: disable new sign-ups (Authentication, Settings), so the account list stays at one user.
+- Because both people use one login, these rules protect against outsiders, not against one profile editing the other's data.
 
 ## Screens
 
@@ -204,21 +185,17 @@ Migration approach:
 3. Imported as `source = opening` lots with null cost; the whole batch is undoable.
 4. After import the dashboard totals must equal the sheet's totals (cards + bulk, and slabs). Treat any mismatch as a failed migration.
 
-## Backend choice (Supabase vs Firebase)
-
-Decision stays **Supabase** unless the owner says otherwise. Firebase is workable, but Firestore has no joins or SQL, so the sales, lots and profit reports and the audit trail would be rebuilt as application code, and server-side triggers need Cloud Functions on the paid plan. Postgres RLS also lets us test the permission rules directly. Firebase's real advantage is built-in offline persistence and no free-tier pausing. If we switch, the sync engine is simplified and FIFO cost is computed at read time from lots and sale lines.
-
 ## Build order
 
 Each phase ends with passing tests and a working app.
 
-0. **Scaffold.** Vite + React + TS, Tailwind, shadcn/ui, routing, dark mode, lint, Vitest, CI, Vercel config, `.env.example`.
-1. **Database.** Migrations for all tables, triggers (actor stamping, audit, price history), RLS policies, `apply_ops` with idempotency and FIFO allocation. **Tests: permission rules, FIFO, idempotency.**
-2. **Sync engine.** Dexie schema, op definitions with local apply functions, outbox, push/pull loop, status pill, sync problems list. **Tests: offline queue, replay, conflict cases in the table above.**
+0. **Scaffold.** Vite + React + TS, Tailwind, routing, dark mode, Vitest, `vercel.json`, `.env.example`, Firebase init.
+1. **Domain logic (pure, tested).** Money, sticker price and rounding, FIFO and stock derivation, sale validation and totals, CSV/price parsing. Tests: sale flow, FIFO, oversold, void.
+2. **Firestore layer.** Persistent cache, typed collections, live store, `writeBatch` helpers that write change + audit together, soft delete, undo stack, sync status pill. Security rules and rules tests.
 3. **Auth and shell.** Login, session persistence, profile switcher, PWA service worker.
-4. **Inventory.** Table, inline edit, quick add, lots, bulk actions, soft delete, Trash, undo stack, item drawer, audit log screen.
-5. **Sales.** Quick sell, multi-line, payments, void/undo. **Tests: sale flow unit + Playwright end to end.**
-6. **Import.** Wizard, Collectr preset, generic mapping, duplicate matching, import undo. Plus the one-off migration of the existing Google Sheet (see "Existing inventory" below).
+4. **Inventory.** Table, inline edit, quick add, lots, bulk actions, soft delete, Trash, item drawer, audit log screen.
+5. **Sales.** Quick sell, multi-line, payments, void/undo. Tests: sale flow unit + end to end.
+6. **Import.** Wizard, Collectr preset, generic mapping, duplicate matching, import undo. Plus the one-off migration of the existing Google Sheet (see "Existing inventory").
 7. **Pricing.** Sticker computation and override, price history chart, Reprice mode, stale and re-sticker flags.
 8. **Shows.** CRUD, Show mode, expenses, float, summary and settlement.
 9. **Dashboard and reports.** Metrics, sales log, profit per card, CSV export.
@@ -228,27 +205,29 @@ Each phase ends with passing tests and a working app.
 
 | Risk | Mitigation |
 |---|---|
-| Sync bugs lose or duplicate data | Op log with idempotent server apply; append-only stock events; sync tests written before UI; outbox never cleared until the server acknowledges. |
-| App will not load offline after a reload | Service worker precaches the shell; tested with network disabled in Playwright. |
-| Browser clears IndexedDB while ops are queued | Request persistent storage (`navigator.storage.persist()`); warn when the queue is non-empty and the tab is closing; never use private browsing at a show. |
-| Supabase free tier pauses after a week of inactivity and has no point-in-time recovery | Scheduled keep-alive ping and a scheduled database dump via GitHub Actions, or the paid tier. In-app full export as a second backup. |
-| Client and server FIFO disagree | Server is the authority; client result is provisional and replaced on sync. |
-| Sticker price computed differently in TS and SQL | Shared test vectors run against both implementations. |
-| Collectr export format differs from what the preset expects, or its prices are in USD | Build the preset from a real export file; the mapping step always allows manual correction; imported market prices are flagged for review. |
-| FIFO lots make data entry slower | Quick add creates the item and first lot in one step; lots only surface in the item drawer. |
-| "Always editable" means a mistake can change the other person's data | Every change is in the audit log with before/after values; soft deletes; undo. |
-| RLS tests need a real Postgres | Run SQL tests against local Supabase in CI; the app must not ship if they are skipped. |
+| Single shared login: no real separation between profiles | Accepted by the owners. Audit log records the acting profile; soft deletes; undo. Rules still block outsiders. |
+| Firestore free-tier read/write limits | Live listeners from cache, no polling, per-screen limits on history/audit, batched imports. Watch usage in the Firebase console. |
+| Offline writes lost if browser storage is cleared before sync | Request persistent storage; show pending-write count; block sign-out with pending writes; never use private browsing at a show. |
+| App will not load offline after a reload | Service worker precaches the shell; test with network disabled. |
+| No server means no enforced invariants | Money/profile validation in rules; domain logic is pure and tested; stock is derived so it cannot go out of sync. |
+| Same field edited on both laptops offline | Last write wins; before/after is in the audit log. |
+| Collectr export differs from the preset, or prices are in USD | Build the preset from a real export; mapping step allows manual fixes; imported prices flagged for review. |
+| FIFO lots slow data entry | Quick add creates the item and first lot in one step. |
+| No point-in-time recovery | Full data export (JSON/CSV) from Settings; consider scheduled Firestore export if moved to a paid plan. |
+| Rules untested without the emulator | Run rules tests in CI with the Firebase emulator (needs Java). |
 
-## Needed from the owner before or during the build
+## Needed from the owner
 
-- A Supabase project (URL, anon key, and a service-role key for migrations and CI only) and a Vercel project.
-- The two login emails and display names.
-- A real Collectr CSV export to build and test the import preset against.
+- Firebase project values: `projectId`, `authDomain`, `appId` (and `storageBucket` / `messagingSenderId` if shown), plus the web API key, set as `VITE_FIREBASE_*` environment variables locally and in Vercel. Web API keys identify the project and are not secrets, but keep them in env vars, not in git.
+- In Firebase: enable Authentication (email/password), create the `damudkipspot@gmail.com` account, disable new sign-ups, create a Firestore database in `australia-southeast1` or `australia-southeast2`, and deploy `firestore.rules`.
+- Vercel: connect the GitHub repo, framework preset Vite, add the `VITE_FIREBASE_*` variables.
+- A real Collectr CSV export when the import phase starts (optional; the sheet comes first).
 
 ## Conventions
 
 - Money is integer cents; format with `Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' })`.
 - Dates stored as UTC `timestamptz`; displayed in the browser's timezone. Financial year = 1 July to 30 June.
-- No component reads from Supabase directly. Reads go through Dexie; writes go through ops.
-- Every new op type needs: a Zod schema, a local apply function, a server handler in `apply_ops`, an inverse for undo, and tests for all four.
-- Schema changes are new migration files; never edit an applied migration.
+- No component reads Firestore directly. Reads come from the live store; writes go through helpers that batch the change with its audit entry.
+- Business logic (money, sticker, FIFO, sales) lives in `src/domain` as pure functions with tests; no Firebase imports there.
+- Every write helper needs: Zod validation, an audit entry, an inverse for undo, and a test.
+- Changes to `firestore.rules` need a rules test.
