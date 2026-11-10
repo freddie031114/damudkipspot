@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useActingProfile } from '../lib/profile'
 import type { Change, Ctx } from './changes'
-import { buildInventory, DEFAULT_SETTINGS, type InventoryRow, type RawData } from './derive'
+import { buildInventory, settingsFor, type InventoryRow, type RawData } from './derive'
 import type { DataSource } from './source'
 
 interface UndoEntry {
@@ -19,6 +19,7 @@ interface Toast {
 interface AppStore {
   ready: boolean
   raw: RawData
+  source: DataSource
   rows: InventoryRow[]
   pending: boolean
   online: boolean
@@ -32,7 +33,7 @@ interface AppStore {
 }
 
 const Ctx = createContext<AppStore | null>(null)
-const empty: RawData = { items: [], lots: [], sales: [], adjustments: [] }
+const empty: RawData = { items: [], lots: [], sales: [], adjustments: [], shows: [], showExpenses: [], profiles: [] }
 
 export function StoreProvider({ source, children }: { source: DataSource; children: ReactNode }) {
   const { acting } = useActingProfile()
@@ -102,10 +103,10 @@ export function StoreProvider({ source, children }: { source: DataSource; childr
     }
   }, [run, notify, undo])
 
-  const rows = useMemo(() => buildInventory(raw, DEFAULT_SETTINGS), [raw])
+  const rows = useMemo(() => buildInventory(raw, (p) => settingsFor(raw.profiles, p)), [raw])
 
   const value: AppStore = {
-    ready, raw, rows, pending, online, toast, apply, undo,
+    ready, raw, source, rows, pending, online, toast, apply, undo,
     canUndo: undoDepth > 0,
     dismissToast: () => setToast(null),
     notify: (t, e) => notify(t, e),

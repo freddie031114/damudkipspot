@@ -1,6 +1,7 @@
 import { allocateFifo, type Demand, type Supply } from '../domain/fifo'
+import type { LineCost } from '../domain/show'
 import { effectiveSticker, type StickerRounding } from '../domain/sticker'
-import type { Adjustment, Item, Lot, Sale } from './types'
+import type { Adjustment, Item, Lot, ProfileDoc, ProfileId, Sale, Show, ShowExpense } from './types'
 
 export interface Settings {
   multiplierPermille: number
@@ -28,17 +29,30 @@ export interface InventoryRow {
   stalePrice: boolean
 }
 
-export interface RawData {
+export interface InventoryData {
   items: Item[]
   lots: Lot[]
   sales: Sale[]
   adjustments: Adjustment[]
 }
 
+export interface RawData extends InventoryData {
+  shows: Show[]
+  showExpenses: ShowExpense[]
+  profiles: ProfileDoc[]
+}
+
+export type SettingsFor = (p: ProfileId) => Settings
+
+/** Settings for a profile: saved values over the defaults. */
+export function settingsFor(profiles: ProfileDoc[] | undefined, p: ProfileId): Settings {
+  return { ...DEFAULT_SETTINGS, ...(profiles?.find((x) => x.id === p)?.settings ?? {}) }
+}
+
 const DAY = 86_400_000
 
 /** Builds FIFO supply/demand from raw records. Soft-deleted lots and voided sales are ignored. */
-export function supplyAndDemand(d: RawData): { supplies: Supply[]; demands: Demand[]; saleLineDemandIds: Map<string, string[]> } {
+export function supplyAndDemand(d: InventoryData): { supplies: Supply[]; demands: Demand[]; saleLineDemandIds: Map<string, string[]> } {
   const supplies: Supply[] = []
   const demands: Demand[] = []
   const saleLineDemandIds = new Map<string, string[]>()
@@ -63,7 +77,8 @@ export function supplyAndDemand(d: RawData): { supplies: Supply[]; demands: Dema
   return { supplies, demands, saleLineDemandIds }
 }
 
-export function buildInventory(d: RawData, settings: Settings = DEFAULT_SETTINGS, now = Date.now()): InventoryRow[] {
+export function buildInventory(d: InventoryData, settings: Settings | SettingsFor = DEFAULT_SETTINGS, now = Date.now()): InventoryRow[] {
+  const forProfile: SettingsFor = typeof settings === 'function' ? settings : () => settings
   const { supplies, demands } = supplyAndDemand(d)
   const fifo = allocateFifo(supplies, demands)
   const stockByItem = new Map<string, Supply[]>()
@@ -74,6 +89,7 @@ export function buildInventory(d: RawData, settings: Settings = DEFAULT_SETTINGS
     .map((item) => {
       const qty = fifo.onHandByItem.get(item.id) ?? 0
       // Bulk is a lump-sum value, not something with a sticker: it counts at market.
+      const settings = forProfile(item.profileId)
       const sticker = item.kind === 'bulk' ? item.marketPriceCents : effectiveSticker(item, settings.multiplierPermille, settings.rounding)
       const costUnknown = (stockByItem.get(item.id) ?? []).some(
         (s) => s.unitCostCents === null && (fifo.remainingBySupply.get(s.id) ?? 0) > 0,
@@ -100,4 +116,11 @@ export function matchesSearch(item: Item, query: string): boolean {
     .join(' ')
     .toLowerCase()
   return words.every((w) => hay.includes(w))
+}
+
+/** Cost of each sale line from the FIFO calculation: `costOf(saleId, lineIndex)`. */
+export function saleLineCosts(d: InventoryData): (saleId: string, lineIndex: number) => LineCost {
+  const { supplies, demands } = supplyAndDemand(d)
+  const { costByDemand } = allocateFifo(supplies, demands)
+  return (saleId, i) => costByDemand.get(`${saleId}:${i}`) ?? { knownCostCents: 0, unknownCostQty: 0, oversoldQty: 0 }
 }

@@ -72,7 +72,7 @@ export type { PaymentMethod }
 
 export type Collection =
   | 'items' | 'lots' | 'sales' | 'adjustments' | 'priceHistory' | 'auditLog'
-  | 'importBatches' | 'shows' | 'showExpenses' | 'savedViews'
+  | 'importBatches' | 'shows' | 'showExpenses' | 'savedViews' | 'profiles'
 
 export interface WriteOp {
   collection: Collection
@@ -106,3 +106,59 @@ export const NEW_ITEM_DEFAULTS = {
   importBatchId: null as string | null,
 }
 export type NewItem = Omit<typeof NEW_ITEM_DEFAULTS, never> & { profileId: ProfileId }
+
+export interface Participant {
+  profileId: ProfileId
+  openingFloatCents: number
+  /** Cash counted at the end of the show; null until counted. */
+  closingCashCents: number | null
+}
+
+export interface Show extends Base {
+  name: string
+  startsOn: string
+  endsOn: string
+  venue: string
+  tableFeeCents: number
+  status: 'planned' | 'live' | 'closed'
+  notes: string
+  participants: Participant[]
+  /** The expense that records the table fee (kept in step with tableFeeCents). */
+  feeExpenseId: string | null
+  deletedAt: number | null
+}
+
+export interface ShowExpense extends Base {
+  showId: string
+  description: string
+  amountCents: number
+  paidByProfileId: ProfileId
+  /** Share of the expense each person bears, as whole percentages adding to 100. */
+  splitPct: Record<ProfileId, number>
+  deletedAt: number | null
+}
+
+export interface ProfileDoc {
+  id: ProfileId
+  settings?: Partial<import('./derive').Settings>
+}
+
+export interface PricePoint {
+  id: string
+  itemId: string
+  marketPriceCents: number
+  recordedAt: number
+  recordedBy: ProfileId
+  source: string
+}
+
+export interface AuditEntry {
+  id: string
+  at: number
+  actorProfileId: ProfileId
+  targetProfileId: ProfileId
+  entity: string
+  entityId: string
+  action: string
+  diff: unknown
+}

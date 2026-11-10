@@ -1,33 +1,35 @@
-import { collection, doc, onSnapshot, writeBatch, type Firestore } from 'firebase/firestore'
+import { collection, doc, getDocs, limit, onSnapshot, orderBy, query, where, writeBatch, type Firestore } from 'firebase/firestore'
 import type { RawData } from './derive'
 import { chunkOps } from './chunk'
 import type { DataSource } from './source'
-import type { Adjustment, Item, Lot, Sale } from './types'
+import type { AuditEntry, PricePoint } from './types'
 
 const BATCH_LIMIT = 400 // Firestore allows 500 writes per batch; leave headroom.
+
+const NAMES = ['items', 'lots', 'sales', 'adjustments', 'shows', 'showExpenses', 'profiles'] as const
 
 export function firestoreSource(db: Firestore): DataSource {
   return {
     subscribe(onData, onError) {
-      const data: RawData = { items: [], lots: [], sales: [], adjustments: [] }
-      const pending = { items: false, lots: false, sales: false, adjustments: false }
-      const ready = { items: false, lots: false, sales: false, adjustments: false }
+      const data: RawData = { items: [], lots: [], sales: [], adjustments: [], shows: [], showExpenses: [], profiles: [] }
+      const pending: Record<string, boolean> = {}
+      const ready: Record<string, boolean> = {}
       const emit = () => {
-        if (!Object.values(ready).every(Boolean)) return
+        if (!NAMES.every((n) => ready[n])) return
         onData({ ...data }, { pending: Object.values(pending).some(Boolean) })
       }
-      const listen = <K extends keyof RawData>(name: K) =>
+      const unsubs = NAMES.map((name) =>
         onSnapshot(
           collection(db, name),
           (snap) => {
-            data[name] = snap.docs.map((d) => d.data()) as unknown as RawData[K]
+            ;(data as unknown as Record<string, unknown[]>)[name] = snap.docs.map((d) => d.data())
             pending[name] = snap.metadata.hasPendingWrites
             ready[name] = true
             emit()
           },
           onError,
-        )
-      const unsubs = [listen('items'), listen('lots'), listen('sales'), listen('adjustments')]
+        ),
+      )
       return () => unsubs.forEach((u) => u())
     },
 
@@ -40,7 +42,22 @@ export function firestoreSource(db: Firestore): DataSource {
       }
       await Promise.all(batches)
     },
+
+    // Single-field queries only, so no composite index is needed; sorted on the client.
+    async itemHistory(itemId) {
+      const [p, a] = await Promise.all([
+        getDocs(query(collection(db, 'priceHistory'), where('itemId', '==', itemId), limit(300))),
+        getDocs(query(collection(db, 'auditLog'), where('entityId', '==', itemId), limit(300))),
+      ])
+      return {
+        prices: p.docs.map((d) => d.data() as PricePoint).sort((x, y) => x.recordedAt - y.recordedAt),
+        audit: a.docs.map((d) => d.data() as AuditEntry).sort((x, y) => y.at - x.at),
+      }
+    },
+
+    async recentAudit(n) {
+      const s = await getDocs(query(collection(db, 'auditLog'), orderBy('at', 'desc'), limit(n)))
+      return s.docs.map((d) => d.data() as AuditEntry)
+    },
   }
 }
-
-export type { Item, Lot, Sale, Adjustment }

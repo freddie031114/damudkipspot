@@ -4,7 +4,7 @@
  * touches Firebase, so it is fully testable and identical online and offline.
  */
 import { saleTotals, validateSale, type SaleDraft } from '../domain/sale'
-import type { Adjustment, Item, Lot, ProfileId, Sale, WriteOp } from './types'
+import type { Adjustment, Item, Lot, ProfileDoc, ProfileId, Sale, Show, ShowExpense, WriteOp } from './types'
 import { NEW_ITEM_DEFAULTS, type NewItem } from './types'
 import type { ImportRow } from '../import/types'
 
@@ -299,5 +299,197 @@ export function importItems(ctx: Ctx, rows: ImportRow[], filename: string): Chan
       { collection: 'importBatches' as const, id: batchId, merge: true, data: { undoneAt: c.now, ...stamp(c) } },
       audit(c, 'import', batchId, 'undo-import', use[0]!.profileId),
     ],
+  }
+}
+
+// ---------- lots ----------
+
+export type LotEdit = Partial<Pick<Lot, 'unitCostCents' | 'qty' | 'note' | 'acquiredAt'>>
+
+/** Editing a lot's cost changes the cost of goods on any sale that used it (FIFO is derived). */
+export function updateLot(ctx: Ctx, before: Lot, edit: LotEdit, itemName = 'item'): Change | null {
+  const changed: Record<string, unknown> = {}
+  const old: Record<string, unknown> = {}
+  const diff: Record<string, { from: unknown; to: unknown }> = {}
+  for (const [k, v] of Object.entries(edit)) {
+    const prev = (before as unknown as Record<string, unknown>)[k]
+    if (v === undefined || sameValue(prev, v)) continue
+    changed[k] = v
+    old[k] = prev
+    diff[k] = { from: prev, to: v }
+  }
+  if (Object.keys(changed).length === 0) return null
+  if ('qty' in changed && (!Number.isInteger(changed.qty) || (changed.qty as number) < 1)) throw new Error('Quantity must be a whole number of at least 1')
+  if ('unitCostCents' in changed && changed.unitCostCents !== null && (!Number.isInteger(changed.unitCostCents) || (changed.unitCostCents as number) < 0)) {
+    throw new Error('Cost must be zero or more')
+  }
+  return {
+    label: `Edited stock lot of ${itemName}`,
+    ops: [
+      { collection: 'lots', id: before.id, merge: true, data: { ...changed, ...stamp(ctx) } },
+      audit(ctx, 'lot', before.id, 'update', before.profileId, diff),
+    ],
+    inverse: (c) => [
+      { collection: 'lots', id: before.id, merge: true, data: { ...old, ...stamp(c) } },
+      audit(c, 'lot', before.id, 'undo-update', before.profileId),
+    ],
+  }
+}
+
+export function deleteLot(ctx: Ctx, lot: Lot, itemName = 'item'): Change {
+  return {
+    label: `Removed a stock lot of ${itemName}`,
+    ops: [softDeleteOp(ctx, 'lots', lot.id, true), audit(ctx, 'lot', lot.id, 'delete', lot.profileId, { qty: lot.qty })],
+    inverse: (c) => [softDeleteOp(c, 'lots', lot.id, false), audit(c, 'lot', lot.id, 'restore', lot.profileId)],
+  }
+}
+
+// ---------- shows ----------
+
+const EVEN: Record<ProfileId, number> = { p1: 50, p2: 50 }
+
+function expenseDoc(ctx: Ctx, showId: string, description: string, amountCents: number, paidBy: ProfileId, splitPct: Record<ProfileId, number>): ShowExpense {
+  if (!description.trim()) throw new Error('Describe the expense')
+  if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error('Expense amount must be more than zero')
+  if (splitPct.p1 + splitPct.p2 !== 100 || splitPct.p1 < 0 || splitPct.p2 < 0) throw new Error('The split must add up to 100%')
+  return { id: ctx.newId(), showId, description: description.trim(), amountCents, paidByProfileId: paidBy, splitPct, deletedAt: null, ...born(ctx) }
+}
+
+export interface NewShow {
+  name: string
+  startsOn: string
+  endsOn: string
+  venue: string
+  tableFeeCents: number
+  /** Who paid the table fee (defaults to the person creating the show). */
+  feePaidBy?: ProfileId
+  notes?: string
+}
+
+export function createShow(ctx: Ctx, input: NewShow): Change & { showId: string } {
+  const name = input.name.trim()
+  if (!name) throw new Error('Name the show')
+  if (!Number.isInteger(input.tableFeeCents) || input.tableFeeCents < 0) throw new Error('Table fee must be zero or more')
+  if (input.endsOn && input.startsOn && input.endsOn < input.startsOn) throw new Error('The show cannot end before it starts')
+  const id = ctx.newId()
+  const ops: WriteOp[] = []
+  let feeId: string | null = null
+  if (input.tableFeeCents > 0) {
+    const fee = expenseDoc(ctx, id, 'Table fee', input.tableFeeCents, input.feePaidBy ?? ctx.actor, EVEN)
+    feeId = fee.id
+    ops.push({ collection: 'showExpenses', id: fee.id, merge: false, data: fee as unknown as Record<string, unknown> })
+  }
+  const show: Show = {
+    id, name, startsOn: input.startsOn, endsOn: input.endsOn || input.startsOn, venue: input.venue.trim(), tableFeeCents: input.tableFeeCents,
+    status: 'planned', notes: input.notes ?? '', feeExpenseId: feeId, deletedAt: null,
+    participants: [
+      { profileId: 'p1', openingFloatCents: 0, closingCashCents: null },
+      { profileId: 'p2', openingFloatCents: 0, closingCashCents: null },
+    ],
+    ...born(ctx),
+  }
+  ops.unshift({ collection: 'shows', id, merge: false, data: show as unknown as Record<string, unknown> })
+  ops.push(audit(ctx, 'show', id, 'create', ctx.actor, { name }))
+  return {
+    showId: id, label: `Created show ${name}`, ops,
+    inverse: (c) => [{ collection: 'shows', id, merge: true, data: { deletedAt: c.now, ...stamp(c) } }, audit(c, 'show', id, 'undo-create', ctx.actor)],
+  }
+}
+
+export type ShowEdit = Partial<Pick<Show, 'name' | 'startsOn' | 'endsOn' | 'venue' | 'notes' | 'status' | 'tableFeeCents'>>
+
+export function updateShow(ctx: Ctx, before: Show, edit: ShowEdit): Change | null {
+  const changed: Record<string, unknown> = {}
+  const old: Record<string, unknown> = {}
+  const diff: Record<string, { from: unknown; to: unknown }> = {}
+  for (const [k, v] of Object.entries(edit)) {
+    const prev = (before as unknown as Record<string, unknown>)[k]
+    if (v === undefined || sameValue(prev, v)) continue
+    changed[k] = v
+    old[k] = prev
+    diff[k] = { from: prev, to: v }
+  }
+  if (Object.keys(changed).length === 0) return null
+  if ('name' in changed && !String(changed.name).trim()) throw new Error('Name the show')
+  const ops: WriteOp[] = []
+  if ('tableFeeCents' in changed) {
+    const fee = changed.tableFeeCents
+    if (!Number.isInteger(fee) || (fee as number) < 0) throw new Error('Table fee must be zero or more')
+    if (before.feeExpenseId) {
+      ops.push({ collection: 'showExpenses', id: before.feeExpenseId, merge: true, data: { amountCents: fee, deletedAt: (fee as number) === 0 ? ctx.now : null, ...stamp(ctx) } })
+    } else if ((fee as number) > 0) {
+      const e = expenseDoc(ctx, before.id, 'Table fee', fee as number, ctx.actor, EVEN)
+      changed.feeExpenseId = e.id
+      ops.push({ collection: 'showExpenses', id: e.id, merge: false, data: e as unknown as Record<string, unknown> })
+    }
+  }
+  ops.unshift({ collection: 'shows', id: before.id, merge: true, data: { ...changed, ...stamp(ctx) } })
+  ops.push(audit(ctx, 'show', before.id, 'update', ctx.actor, diff))
+  return {
+    label: `Edited show ${before.name}`,
+    ops,
+    inverse: (c) => [
+      { collection: 'shows', id: before.id, merge: true, data: { ...old, ...stamp(c) } },
+      ...(before.feeExpenseId && 'tableFeeCents' in old
+        ? [{ collection: 'showExpenses' as const, id: before.feeExpenseId, merge: true, data: { amountCents: old.tableFeeCents, deletedAt: (old.tableFeeCents as number) === 0 ? c.now : null, ...stamp(c) } }]
+        : []),
+      audit(c, 'show', before.id, 'undo-update', ctx.actor),
+    ],
+  }
+}
+
+/** Sets a person's opening float and/or counted closing cash for a show. */
+export function setParticipant(ctx: Ctx, show: Show, profileId: ProfileId, patch: { openingFloatCents?: number; closingCashCents?: number | null }): Change {
+  if (patch.openingFloatCents !== undefined && (!Number.isInteger(patch.openingFloatCents) || patch.openingFloatCents < 0)) throw new Error('Float must be zero or more')
+  if (patch.closingCashCents != null && (!Number.isInteger(patch.closingCashCents) || patch.closingCashCents < 0)) throw new Error('Cash count must be zero or more')
+  const participants = (['p1', 'p2'] as const).map((id) => {
+    const cur = show.participants.find((p) => p.profileId === id) ?? { profileId: id, openingFloatCents: 0, closingCashCents: null }
+    return id === profileId ? { ...cur, ...patch } : cur
+  })
+  return {
+    label: 'Updated cash float',
+    ops: [
+      { collection: 'shows', id: show.id, merge: true, data: { participants, ...stamp(ctx) } },
+      audit(ctx, 'show', show.id, 'update', profileId, { participants: patch }),
+    ],
+    inverse: (c) => [{ collection: 'shows', id: show.id, merge: true, data: { participants: show.participants, ...stamp(c) } }, audit(c, 'show', show.id, 'undo-update', profileId)],
+  }
+}
+
+export function addExpense(ctx: Ctx, showId: string, input: { description: string; amountCents: number; paidBy: ProfileId; splitPct?: Record<ProfileId, number> }): Change {
+  const e = expenseDoc(ctx, showId, input.description, input.amountCents, input.paidBy, input.splitPct ?? EVEN)
+  return {
+    label: `Added expense ${e.description}`,
+    ops: [
+      { collection: 'showExpenses', id: e.id, merge: false, data: e as unknown as Record<string, unknown> },
+      audit(ctx, 'expense', e.id, 'create', input.paidBy, { showId, amountCents: e.amountCents }),
+    ],
+    inverse: (c) => [{ collection: 'showExpenses', id: e.id, merge: true, data: { deletedAt: c.now, ...stamp(c) } }, audit(c, 'expense', e.id, 'undo-create', input.paidBy)],
+  }
+}
+
+export function deleteExpense(ctx: Ctx, e: ShowExpense): Change {
+  return {
+    label: `Removed expense ${e.description}`,
+    ops: [{ collection: 'showExpenses', id: e.id, merge: true, data: { deletedAt: ctx.now, ...stamp(ctx) } }, audit(ctx, 'expense', e.id, 'delete', e.paidByProfileId)],
+    inverse: (c) => [{ collection: 'showExpenses', id: e.id, merge: true, data: { deletedAt: null, ...stamp(c) } }, audit(c, 'expense', e.id, 'restore', e.paidByProfileId)],
+  }
+}
+
+// ---------- settings ----------
+
+/** Writes the whole settings object for a profile (merged with what was there). */
+export function updateSettings(ctx: Ctx, doc: ProfileDoc, patch: NonNullable<ProfileDoc['settings']>): Change {
+  const next = { ...(doc.settings ?? {}), ...patch }
+  if (next.multiplierPermille !== undefined && (!Number.isInteger(next.multiplierPermille) || next.multiplierPermille < 500 || next.multiplierPermille > 5000)) {
+    throw new Error('Sticker multiplier must be between 0.5x and 5x')
+  }
+  return {
+    label: 'Saved settings',
+    ops: [
+      { collection: 'profiles', id: doc.id, merge: true, data: { id: doc.id, settings: next, ...stamp(ctx) } },
+      audit(ctx, 'settings', doc.id, 'update', doc.id, patch),
+    ],
+    inverse: (c) => [{ collection: 'profiles', id: doc.id, merge: true, data: { id: doc.id, settings: doc.settings ?? {}, ...stamp(c) } }, audit(c, 'settings', doc.id, 'undo-update', doc.id)],
   }
 }
