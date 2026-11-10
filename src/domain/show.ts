@@ -1,4 +1,4 @@
-import type { PaymentMethod, ProfileId, SaleLine, SalePayment } from './sale'
+import type { PaymentMethod, ProfileId, SaleLine, SalePayment, SaleTradeIn } from './sale'
 
 /** Splits `total` across `weights` so the parts add up exactly (largest remainder). */
 export function allocate(total: number, weights: number[]): number[] {
@@ -18,6 +18,8 @@ export interface SummarySale {
   discountCents: number
   lines: SaleLine[]
   payments: SalePayment[]
+  /** Cards received in trade; they count as stock for whoever's stock they joined. */
+  tradeIns?: SaleTradeIn[]
   voidedAt: number | null
 }
 
@@ -114,7 +116,14 @@ export function summarizeShow(input: {
     // Real money (not trades) belongs to whoever owns the stock, however it was received.
     const money = s.payments.filter((p) => p.method !== 'trade')
     const moneyTotal = money.reduce((a, p) => a + p.amountCents, 0)
-    const entitled = allocate(moneyTotal, PROFILES.map((p) => ownerRev[p]))
+    // Cards taken in trade are already in someone's stock. If they joined a different person's
+    // stock than the cards given up, the money between the two evens that out.
+    const tradeStock: Record<ProfileId, number> = { p1: 0, p2: 0 }
+    for (const t of s.tradeIns ?? []) tradeStock[t.ownerProfileId] += t.qty * t.creditCents
+    const hasTrades = (s.tradeIns?.length ?? 0) > 0
+    const entitled = hasTrades
+      ? PROFILES.map((p) => ownerRev[p] - tradeStock[p])
+      : allocate(moneyTotal, PROFILES.map((p) => ownerRev[p]))
     PROFILES.forEach((p, i) => (per[p].entitledCents += entitled[i]!))
     for (const p of money) {
       per[p.receivedByProfileId].collectedCents += p.amountCents

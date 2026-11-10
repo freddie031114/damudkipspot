@@ -1,4 +1,4 @@
-import type { PaymentMethod, ProfileId, SaleDraft } from './sale'
+import { settlePayments, tradeCreditCents, type PaymentMethod, type ProfileId, type SaleDraft, type TradeInInput } from './sale'
 
 export interface CartLine {
   itemId: string
@@ -30,13 +30,14 @@ export function oversoldLines(cart: CartLine[]): CartLine[] {
   return cart.filter((l) => (byItem.get(l.itemId) ?? 0) > l.available)
 }
 
-/** A one-payment sale for the whole cart, taken by the person selling. */
-export function cartToDraft(cart: CartLine[], opts: { soldBy: ProfileId; method: PaymentMethod; discountCents: number }): SaleDraft {
+/** A sale for the whole cart, taken by the person selling. Cards traded in count as credit towards it. */
+export function cartToDraft(cart: CartLine[], opts: { soldBy: ProfileId; method: PaymentMethod; discountCents: number; tradeIns?: TradeInInput[] }): SaleDraft {
   const { totalCents } = cartTotals(cart, opts.discountCents)
   return {
     soldByProfileId: opts.soldBy,
     discountCents: opts.discountCents,
+    ...(opts.tradeIns?.length ? { tradeIns: opts.tradeIns } : {}),
     lines: cart.map((l) => ({ itemId: l.itemId, ownerProfileId: l.ownerProfileId, qty: l.qty, stickerPriceCents: l.stickerPriceCents, unitPriceCents: l.unitPriceCents })),
-    payments: [{ method: opts.method, amountCents: totalCents, receivedByProfileId: opts.soldBy }],
+    payments: settlePayments({ totalCents, creditCents: tradeCreditCents(opts.tradeIns), method: opts.method, receivedBy: opts.soldBy }),
   }
 }

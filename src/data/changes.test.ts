@@ -38,19 +38,19 @@ describe('createItem', () => {
 })
 
 describe('updateItem', () => {
-  const item = { id: 'i1', profileId: 'p1', name: 'A', marketPriceCents: 1000, location: '', tags: [] } as unknown as Item
-  it('returns null when nothing changed', () => expect(updateItem(ctx(), item, { name: 'A', location: '' })).toBeNull())
+  const item = { id: 'i1', profileId: 'p1', name: 'A', marketPriceCents: 1000, notes: '', tags: [] } as unknown as Item
+  it('returns null when nothing changed', () => expect(updateItem(ctx(), item, { name: 'A', notes: '' })).toBeNull())
   it('writes only changed fields, logs before/after and records price history', () => {
-    const c = updateItem(ctx(), item, { marketPriceCents: 1200, location: 'Box 1', name: 'A' })!
+    const c = updateItem(ctx(), item, { marketPriceCents: 1200, notes: 'Box 1', name: 'A' })!
     const patch = c.ops[0]!.data
-    expect(patch).toMatchObject({ marketPriceCents: 1200, location: 'Box 1' })
+    expect(patch).toMatchObject({ marketPriceCents: 1200, notes: 'Box 1' })
     expect('name' in patch).toBe(false)
     expect(c.ops.some((o) => o.collection === 'priceHistory')).toBe(true)
-    expect(c.ops.at(-1)!.data.diff).toEqual({ marketPriceCents: { from: 1000, to: 1200 }, location: { from: '', to: 'Box 1' } })
+    expect(c.ops.at(-1)!.data.diff).toEqual({ marketPriceCents: { from: 1000, to: 1200 }, notes: { from: '', to: 'Box 1' } })
   })
   it('inverse restores the old values', () => {
-    const c = updateItem(ctx(), item, { location: 'Box 1' })!
-    expect(c.inverse!(ctx())[0]!.data).toMatchObject({ location: '' })
+    const c = updateItem(ctx(), item, { notes: 'Box 1' })!
+    expect(c.inverse!(ctx())[0]!.data).toMatchObject({ notes: '' })
   })
   it('rejects a negative market price', () => expect(() => updateItem(ctx(), item, { marketPriceCents: -5 })).toThrow())
 })
@@ -123,14 +123,86 @@ describe('derived flags and search', () => {
     expect(row).toMatchObject({ costUnknown: true, lowStock: true, stalePrice: true, sticker: 100 })
   })
   it('searches all words across fields', () => {
-    const it = { name: 'Gengar', setName: 'Lost Origin', cardNumber: 'TG06/TG30', variant: '', language: 'EN', condition: 'LP', grade: '', location: 'Binder 2', notes: '', tags: [], setCode: '' } as unknown as Item
+    const it = { name: 'Gengar', setName: 'Lost Origin', cardNumber: 'TG06/TG30', variant: '', language: 'EN', condition: 'LP', grade: '', notes: '', tags: [], setCode: '' } as unknown as Item
     expect(matchesSearch(it, 'gengar tg06')).toBe(true)
-    expect(matchesSearch(it, 'gengar binder')).toBe(true)
+    expect(matchesSearch(it, 'gengar lost origin')).toBe(true)
     expect(matchesSearch(it, 'pikachu')).toBe(false)
     expect(matchesSearch(it, '')).toBe(true)
-    const slab = { name: 'Charizard 20th Ann', gradingCompany: 'PSA', grade: '10', kind: 'graded', game: 'Pokémon', setName: '', cardNumber: '', variant: '', language: 'EN', condition: '', location: '', notes: '', tags: [], setCode: '' } as unknown as Item
+    const slab = { name: 'Charizard 20th Ann', gradingCompany: 'PSA', grade: '10', kind: 'graded', game: 'Pokémon', setName: '', cardNumber: '', variant: '', language: 'EN', condition: '', notes: '', tags: [], setCode: '' } as unknown as Item
     expect(matchesSearch(slab, 'psa 10')).toBe(true)
     expect(matchesSearch(slab, 'psa 9')).toBe(false)
     expect(matchesSearch(slab, 'graded')).toBe(true)
+  })
+})
+
+describe('trades', () => {
+  function stocked() {
+    const s = empty()
+    applyOps(s, createItem(ctx(), { profileId: 'p1', name: 'Charizard', marketPriceCents: 8000 }, { qty: 1, unitCostCents: 5000 }).ops)
+    return s
+  }
+  const newCard = (over = {}) => ({ itemId: null, ownerProfileId: 'p1' as const, qty: 2, creditCents: 1500, item: { name: 'Pikachu', setName: '', cardNumber: '25', variant: '', condition: 'NM', game: 'Pokémon', marketPriceCents: 0 }, ...over })
+
+  it('a trade creates the new item and a lot costed at the credit given', () => {
+    const s = stocked()
+    const charizard = s.items[0]!
+    const draft = quickSale({ soldByProfileId: 'p1', itemId: charizard.id, ownerProfileId: 'p1', stickerPriceCents: 8000, method: 'cash', tradeIns: [newCard()] })
+    const c = recordSale(ctx('p1', 5_000), draft)
+    applyOps(s, c.ops)
+
+    const sale = s.sales[0]!
+    expect(sale.payments.map((p) => [p.method, p.amountCents])).toEqual([['trade', 3000], ['cash', 5000]])
+    expect(sale.tradeIns).toHaveLength(1)
+
+    const lot = s.lots.find((l) => l.source === 'trade-in')!
+    expect(lot).toMatchObject({ qty: 2, unitCostCents: 1500, saleId: sale.id, profileId: 'p1' })
+    const pika = s.items.find((i) => i.name === 'Pikachu')!
+    expect(pika.marketPriceCents).toBe(1500) // defaults to the credit when no market price is given
+
+    const rows = buildInventory(s, undefined, 6_000)
+    expect(rows.find((r) => r.item.id === charizard.id)!.qty).toBe(0)
+    expect(rows.find((r) => r.item.id === pika.id)).toMatchObject({ qty: 2, knownCostCents: 3000 })
+  })
+
+  it('cards traded in join an existing item instead of creating a duplicate', () => {
+    const s = stocked()
+    const charizard = s.items[0]!
+    const draft = quickSale({ soldByProfileId: 'p1', itemId: charizard.id, ownerProfileId: 'p1', stickerPriceCents: 8000, method: 'cash', tradeIns: [{ itemId: charizard.id, ownerProfileId: 'p1', qty: 1, creditCents: 6000 }] })
+    applyOps(s, recordSale(ctx('p1', 5_000), draft).ops)
+    expect(s.items).toHaveLength(1)
+    expect(s.sales[0]!.tradeIns![0]).toMatchObject({ createdItem: false, itemId: charizard.id })
+    expect(buildInventory(s, undefined, 6_000)[0]!.qty).toBe(1)
+  })
+
+  it('the trade-in stock keeps the credit as its cost, so profit is worked out when it sells', () => {
+    const s = stocked()
+    const charizard = s.items[0]!
+    applyOps(s, recordSale(ctx('p1', 5_000), quickSale({ soldByProfileId: 'p1', itemId: charizard.id, ownerProfileId: 'p1', stickerPriceCents: 8000, method: 'cash', tradeIns: [newCard({ qty: 1, creditCents: 3000 })] })).ops)
+    const pika = s.items.find((i) => i.name === 'Pikachu')!
+    applyOps(s, recordSale(ctx('p1', 7_000), quickSale({ soldByProfileId: 'p1', itemId: pika.id, ownerProfileId: 'p1', stickerPriceCents: 4000, method: 'cash' })).ops)
+    const row = buildInventory(s, undefined, 8_000).find((r) => r.item.id === pika.id)!
+    expect(row.qty).toBe(0)
+    expect(row.oversold).toBe(0)
+  })
+
+  it('voiding the trade (or undoing it) removes the cards received and the item it created', () => {
+    const s = stocked()
+    const charizard = s.items[0]!
+    const c = recordSale(ctx('p1', 5_000), quickSale({ soldByProfileId: 'p1', itemId: charizard.id, ownerProfileId: 'p1', stickerPriceCents: 8000, method: 'cash', tradeIns: [newCard()] }))
+    applyOps(s, c.ops)
+    applyOps(s, c.inverse!(ctx('p1', 6_000)))
+    const rows = buildInventory(s, undefined, 7_000)
+    expect(rows.map((r) => r.item.name)).toEqual(['Charizard'])
+    expect(rows[0]!.qty).toBe(1)
+    expect(s.lots.find((l) => l.source === 'trade-in')!.deletedAt).toBe(6_000)
+    expect(s.sales[0]!.voidedAt).toBe(6_000)
+    expect(voidSale(ctx(), s.sales[0]!)).toBeNull()
+  })
+
+  it('records the trade in the audit entry', () => {
+    const s = stocked()
+    const c = recordSale(ctx('p1', 5_000), quickSale({ soldByProfileId: 'p1', itemId: s.items[0]!.id, ownerProfileId: 'p1', stickerPriceCents: 8000, method: 'cash', tradeIns: [newCard()] }))
+    expect(c.ops.find((o) => o.collection === 'auditLog')!.data.diff).toMatchObject({ tradeIns: 1, tradeCreditCents: 3000 })
+    expect(c.label).toMatch(/^Trade /)
   })
 })

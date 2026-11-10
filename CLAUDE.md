@@ -18,6 +18,8 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 | Sticker price | Sticker (asking) price = market price × 1.10. The multiplier is a setting per profile. |
 | Cost basis | **Purchase lots, FIFO.** Each purchase is a lot with its own unit cost and date; sales consume the oldest lot first. |
 | Auth / backend | Firebase Auth with Google sign-in, Cloud Firestore, free Spark plan, no Cloud Functions. Hosted on Vercel. |
+| Trades | Customers can pay partly or wholly in cards. Quick sell and Show mode have a Trade-in section; cards received become stock costed at the credit given. See assumption 3. |
+| Location | **Removed** at the owner's request. Items have no location field or column. |
 | Money | Integer cents everywhere, AUD only. No floats. |
 | Deletes | Soft delete only (`deleted_at`). No hard deletes through the API. |
 
@@ -25,7 +27,7 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 
 1. **Sticker override.** Sticker is computed from market by default, but an item can carry an optional manual sticker override (for bulk bins, bundles, showcase cards). Clearing the override returns to 1.1×.
 2. **Sticker rounding.** Default is **nearest $1** (confirmed; it matches the existing sheet). Per-profile setting: none / nearest 50c / nearest $1 / nearest $5.
-3. **Trades.** A trade is a payment method with a trade credit value; optionally the cards received are entered as new lots whose cost is the credit given.
+3. **Trades.** A trade is a sale where the customer hands over cards as part of the payment. Each card received (`tradeIns[]` on the sale) becomes stock in the same write: a new item if it is not already held, plus a `trade-in` lot costed at the credit given. The credit counts as a `trade` payment, the balance is paid by cash / card / PayID, and if the cards are worth more than the sale the difference is handed back as a negative cash payment. The new stock goes to whoever owns the stock being sold unless chosen otherwise; if it goes to the other person, settlement accounts for it. Voiding a trade takes the cards back out of stock.
 4. **GST.** Not modelled. Reports give revenue, cost and profit; add GST handling only if either person registers.
 5. **Shared-cost split.** Table fee and other show expenses split equally by default, with a custom percentage option per expense.
 
@@ -92,11 +94,11 @@ React UI ◀── onSnapshot (live queries) ── Firestore local cache (Index
 Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (acting profile id). Money is integer cents. Profile ids are `p1` (owner, the right-hand block of the old sheet) and `p2` (friend, the left-hand block). Display names are editable in Settings.
 
 - **profiles/{p1|p2}**: `displayName`, `colour`, `settings` (sticker multiplier, sticker rounding, low-stock threshold, stale-price days, re-sticker threshold %).
-- **items**: `profileId`, `kind` (single / sealed / graded / bulk / other; `bulk` is a lump-sum pool with a manual value and no sticker), `game`, `name`, `setName`, `setCode`, `cardNumber`, `language`, `variant`, `condition`, `gradingCompany`, `grade`, `sealedType`, `marketPriceCents`, `marketPriceUpdatedAt`, `stickerOverrideCents` (nullable), `stickeredPriceCents` (price on the physical sticker), `location`, `notes`, `tags`, `photoPath`, `lowStockThreshold`, `importBatchId`, `deletedAt`.
+- **items**: `profileId`, `kind` (single / sealed / graded / bulk / other; `bulk` is a lump-sum pool with a manual value and no sticker), `game`, `name`, `setName`, `setCode`, `cardNumber`, `language`, `variant`, `condition`, `gradingCompany`, `grade`, `sealedType`, `marketPriceCents`, `marketPriceUpdatedAt`, `stickerOverrideCents` (nullable), `stickeredPriceCents` (price on the physical sticker), `notes`, `tags`, `photoPath`, `lowStockThreshold`, `importBatchId`, `deletedAt`.
   - Sticker price = `stickerOverrideCents ?? round(marketPriceCents × multiplier)` using the profile's rounding rule.
   - Quantity is not stored on the item.
-- **lots**: `itemId`, `profileId`, `acquiredAt`, `qty`, `unitCostCents` (**nullable**, as opening stock has no recorded cost), `source` (purchase / trade-in / import / opening), `note`, `importBatchId`, `deletedAt`.
-- **sales**: `soldByProfileId`, `showId`, `soldAt`, `note`, `discountCents`, `lines[]` (`itemId`, `ownerProfileId`, `qty`, `stickerPriceCents`, `unitPriceCents`), `payments[]` (`method`: cash / card / payid / trade, `amountCents`, `receivedByProfileId`), `voidedAt`, `voidedBy`.
+- **lots**: `itemId`, `profileId`, `acquiredAt`, `qty`, `unitCostCents` (**nullable**, as opening stock has no recorded cost), `source` (purchase / trade-in / import / opening), `note`, `saleId` (trade-ins only), `importBatchId`, `deletedAt`.
+- **sales**: `soldByProfileId`, `showId`, `soldAt`, `note`, `discountCents`, `lines[]` (`itemId`, `ownerProfileId`, `qty`, `stickerPriceCents`, `unitPriceCents`), `payments[]` (`method`: cash / card / payid / trade, `amountCents`, `receivedByProfileId`; a negative cash amount is change handed back after a trade), `tradeIns[]` (`itemId`, `ownerProfileId`, `qty`, `creditCents`, `lotId`, `createdItem`), `voidedAt`, `voidedBy`.
 - **adjustments**: `itemId`, `qtyDelta`, `reason` (damaged / lost / kept / count correction / found), `note`.
 - **priceHistory**: `itemId`, `marketPriceCents`, `recordedAt`, `recordedBy`, `source`. Written in the same batch as any market price change.
 - **shows**: `name`, `startsOn`, `endsOn`, `venue`, `tableFeeCents`, `status` (planned / live / closed), `notes`, `participants[]` (`profileId`, `openingFloatCents`, `closingCashCents`).
@@ -117,17 +119,17 @@ Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (
 ## Screens
 
 1. **Login.**
-2. **Inventory** (home). Virtualised dense table, inline cell editing, column sort/filter/show/hide, multi-select with bulk edit/delete/move location, saved views, profile switcher (Freddie / Ferrell). Flags column: low stock, stale price, needs re-sticker, oversold.
+2. **Inventory** (home). Virtualised dense table, inline cell editing, column sort/filter/show/hide, multi-select with bulk delete / mark stickered, saved views, profile switcher (Freddie / Ferrell). Flags column: low stock, stale price, needs re-sticker, oversold.
 3. **Item drawer.** All fields, lots (add / edit / remaining), price history chart, sales of this item, audit trail, photo.
 4. **Quick add.** Modal with type-ahead from existing items (same card → add a lot instead of a duplicate row). Enter to save and add another.
-5. **Quick sell.** Search → item → price pre-filled from sticker → payment method → Enter. Can add more lines for a bundle, apply a bundle discount, split payment. Toast with Undo.
+5. **Quick sell.** Search → item → price pre-filled from sticker → payment method → Enter. Can add more lines for a bundle, apply a bundle discount, split payment. Optional Trade-in section for cards the customer hands over. Toast with Undo.
 6. **Reprice mode.** Steps through items with the oldest market prices; type a price, Enter moves to the next. Needed because all pricing is manual.
 7. **Import wizard.** Upload CSV → pick preset (Collectr / generic) → map columns → preview with validation and duplicate matching → import. Each import can be undone as a whole.
 8. **Shows.** List and detail: fee, expenses, participants, float.
 9. **Show mode.** Full-screen: large search bar, quick sell, running takings (total and per payment method, per profile), recent sales with undo, "selling as" switch, sync status.
 10. **Show summary.** Sales, revenue, cost and profit per profile; expense split; cash reconciliation (float + cash sales vs counted); settlement showing who owes whom, including money one person collected for the other's stock.
 11. **Dashboard** (per profile). Market value, cost, unrealised profit, top movers, low stock, recent sales, stale prices, sell-through.
-12. **Reports.** Sales log filterable by profile / show / date range / payment method; profit per card; Australian financial year presets (1 July – 30 June); CSV export.
+12. **Reports.** Sales log filterable by profile / show / date range / payment method; a Trades tab (what went out, what came in, credit, cash difference); profit per card; Australian financial year presets (1 July – 30 June); CSV export.
 13. **Audit log.** Filterable by actor, profile, entity, date.
 14. **Trash.** Soft-deleted items, lots and voided sales with restore.
 15. **Settings.** Profile, sticker multiplier and rounding, thresholds, theme, data export.
@@ -154,7 +156,7 @@ Every document has `id`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` (
 - Cash float and end-of-show cash reconciliation; settlement between the two profiles.
 - Undo for a whole CSV import.
 - Full data export (all tables to CSV/JSON) as a manual backup.
-- Tags and locations with bulk move.
+- Tags.
 
 ### Deliberately left for later
 
@@ -207,7 +209,7 @@ Migration approach:
 **Not done / not verified:**
 - **Not tested against live Firebase:** real Google sign-in, live snapshots and writes. The first real login is the first real test.
 - The friend's own Google email is not on the approved list yet (only `damudkipspot@gmail.com` and `freddiechang918@gmail.com`).
-- Photos (Firebase Storage needs the paid plan on new projects), split payments, trade-in handling (a trade is a payment method only), saved views are per laptop (not shared), automatic price providers, scheduled backups.
+- Photos (Firebase Storage needs the paid plan on new projects), split payments by hand (a trade's credit plus balance is the only split), saved views are per laptop (not shared), automatic price providers, scheduled backups.
 - Collectr preset unverified against a real export.
 
 ## Build order

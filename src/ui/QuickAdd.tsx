@@ -14,7 +14,7 @@ export function QuickAdd({ owner, onClose }: { owner: ProfileId; onClose: () => 
   const ctx = useChangeCtx()
   const [f, setF] = useState({
     name: '', setName: '', cardNumber: '', language: 'EN', variant: '', condition: 'NM', kind: 'single' as ItemKind,
-    qty: '1', cost: '', market: '', location: '',
+    qty: '1', cost: '', market: '',
   })
   const [error, setError] = useState('')
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
@@ -45,7 +45,7 @@ export function QuickAdd({ owner, onClose }: { owner: ProfileId; onClose: () => 
       apply(
         createItem(ctx(), {
           profileId: owner, name: f.name, setName: f.setName, cardNumber: f.cardNumber, language: f.language,
-          variant: f.variant, condition: f.kind === 'sealed' ? '' : f.condition.trim(), ...(grade ? { gradingCompany: grade.gradingCompany, grade: grade.grade } : {}), kind: grade && f.kind === 'single' ? 'graded' : f.kind, marketPriceCents: market, location: f.location,
+          variant: f.variant, condition: f.kind === 'sealed' ? '' : f.condition.trim(), ...(grade ? { gradingCompany: grade.gradingCompany, grade: grade.grade } : {}), kind: grade && f.kind === 'single' ? 'graded' : f.kind, marketPriceCents: market,
         }, { qty, unitCostCents: cost }),
       )
       if (again) setF({ ...f, name: '', cardNumber: '', market: '', cost: '', qty: '1' })
@@ -91,7 +91,6 @@ export function QuickAdd({ owner, onClose }: { owner: ProfileId; onClose: () => 
                 <option value="sealed">Sealed product</option><option value="other">Other</option>
               </select>
             </label>
-            <label className={`${field} col-span-3`}>Location<input className={inputCls} value={f.location} onChange={set('location')} placeholder="Binder 1" /></label>
             <label className={`${field} col-span-3`}>Set<input className={inputCls} value={f.setName} onChange={set('setName')} /></label>
             <label className={`${field} col-span-1`}>Lang
               <select className={inputCls} value={f.language} onChange={set('language')}>

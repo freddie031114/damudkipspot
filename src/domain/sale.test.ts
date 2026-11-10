@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { quickSale, saleTotals, validateSale, type SaleDraft } from './sale'
+import { quickSale, saleTotals, settlePayments, tradeCreditCents, validateSale, type SaleDraft, type TradeInInput } from './sale'
 import { stickerFromMarket } from './sticker'
 
 const base = { soldByProfileId: 'p1' as const, itemId: 'A', ownerProfileId: 'p2' as const, method: 'cash' as const }
@@ -66,5 +66,68 @@ describe('validateSale', () => {
     const s = quickSale({ ...base, stickerPriceCents: 1000 })
     s.discountCents = 5000
     expect(validateSale(s)).toContain('Discount is larger than the sale')
+  })
+})
+
+describe('trades', () => {
+  const card = (qty: number, creditCents: number): TradeInInput => ({ itemId: 'T', ownerProfileId: 'p1', qty, creditCents })
+
+  it('totals the credit given for the cards received', () => {
+    expect(tradeCreditCents([card(2, 1500), card(1, 500)])).toBe(3500)
+    expect(tradeCreditCents(undefined)).toBe(0)
+  })
+
+  it('pays the balance by the chosen method after the trade credit', () => {
+    expect(settlePayments({ totalCents: 5000, creditCents: 3000, method: 'cash', receivedBy: 'p1' })).toEqual([
+      { method: 'trade', amountCents: 3000, receivedByProfileId: 'p1' },
+      { method: 'cash', amountCents: 2000, receivedByProfileId: 'p1' },
+    ])
+  })
+
+  it('an even swap has only the trade payment', () => {
+    expect(settlePayments({ totalCents: 3000, creditCents: 3000, method: 'cash', receivedBy: 'p1' })).toEqual([
+      { method: 'trade', amountCents: 3000, receivedByProfileId: 'p1' },
+    ])
+  })
+
+  it('gives cash back when the cards received are worth more than the sale', () => {
+    const p = settlePayments({ totalCents: 8000, creditCents: 10000, method: 'card', receivedBy: 'p2' })
+    expect(p).toEqual([
+      { method: 'trade', amountCents: 10000, receivedByProfileId: 'p2' },
+      { method: 'cash', amountCents: -2000, receivedByProfileId: 'p2' },
+    ])
+  })
+
+  it('a sale with cards traded in and a cash top-up is valid', () => {
+    const sale = quickSale({ ...base, stickerPriceCents: 5000, method: 'cash', tradeIns: [card(1, 3000)] })
+    expect(sale.payments.map((p) => [p.method, p.amountCents])).toEqual([['trade', 3000], ['cash', 2000]])
+    expect(validateSale(sale)).toEqual([])
+  })
+
+  it('a sale with cash back to the customer is valid', () => {
+    const sale = quickSale({ ...base, stickerPriceCents: 8000, method: 'cash', tradeIns: [card(1, 10000)] })
+    expect(sale.payments.at(-1)).toMatchObject({ method: 'cash', amountCents: -2000 })
+    expect(validateSale(sale)).toEqual([])
+  })
+
+  it('refuses a negative payment when no cards were traded in', () => {
+    const sale = quickSale({ ...base, stickerPriceCents: 1000 })
+    sale.payments = [{ method: 'cash', amountCents: 1500, receivedByProfileId: 'p1' }, { method: 'cash', amountCents: -500, receivedByProfileId: 'p1' }]
+    expect(validateSale(sale)).toContain('Payment 2: amount must be zero or more')
+  })
+
+  it('rejects a trade payment that does not match the cards received', () => {
+    const sale = quickSale({ ...base, stickerPriceCents: 5000, method: 'cash', tradeIns: [card(1, 3000)] })
+    sale.payments = [{ method: 'trade', amountCents: 1000, receivedByProfileId: 'p1' }, { method: 'cash', amountCents: 4000, receivedByProfileId: 'p1' }]
+    expect(validateSale(sale)).toContain('Trade credit must equal the value of the cards received')
+  })
+
+  it('rejects bad trade-in quantities, credit and unnamed new cards', () => {
+    const sale = quickSale({ ...base, stickerPriceCents: 1000, method: 'cash', tradeIns: [{ itemId: null, ownerProfileId: 'p1', qty: 0, creditCents: -1 }] })
+    expect(validateSale(sale)).toEqual(expect.arrayContaining([
+      'Trade-in 1: quantity must be a whole number of at least 1',
+      'Trade-in 1: credit must be zero or more',
+      'Trade-in 1: name the card',
+    ]))
   })
 })

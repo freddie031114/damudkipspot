@@ -4,11 +4,15 @@ import { matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import { formatAud, parseMoney } from '../domain/money'
 import { quickSale, type PaymentMethod } from '../domain/sale'
+import { toTradeInInputs, type TradeInDraft } from '../domain/trade'
+import type { ProfileId } from '../data/types'
 import { useActingProfile, DEFAULT_NAMES } from '../lib/profile'
 import { btnCls, inputCls, Modal } from './common'
+import { TradeInEditor } from './TradeInEditor'
 
+// How the customer pays whatever the trade does not cover.
 const METHODS: { id: PaymentMethod; label: string }[] = [
-  { id: 'cash', label: 'Cash' }, { id: 'card', label: 'Card' }, { id: 'payid', label: 'PayID' }, { id: 'trade', label: 'Trade' },
+  { id: 'cash', label: 'Cash' }, { id: 'card', label: 'Card' }, { id: 'payid', label: 'PayID' },
 ]
 
 export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClose: () => void }) {
@@ -21,6 +25,8 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
   const [price, setPrice] = useState(initial ? (initial.sticker / 100).toFixed(2) : '')
   const [qty, setQty] = useState('1')
   const [method, setMethod] = useState<PaymentMethod>('cash')
+  const [trades, setTrades] = useState<TradeInDraft[]>([])
+  const [tradeOwnerPick, setTradeOwnerPick] = useState<ProfileId | null>(null)
   const [error, setError] = useState('')
   const priceRef = useRef<HTMLInputElement>(null)
 
@@ -30,6 +36,8 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
   )
   useEffect(() => setCursor(0), [query])
   useEffect(() => { if (picked) priceRef.current?.select() }, [picked])
+
+  const saleTotal = (parseMoney(price) ?? 0) * (Number(qty) || 0)
 
   function pick(r: InventoryRow) {
     setPicked(r)
@@ -48,7 +56,7 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
         ctx(),
         quickSale({
           soldByProfileId: acting, itemId: picked.item.id, ownerProfileId: picked.item.profileId,
-          stickerPriceCents: picked.sticker, priceCents: cents, qty: n, method,
+          stickerPriceCents: picked.sticker, priceCents: cents, qty: n, method, tradeIns: toTradeInInputs(trades),
         }),
       )
       apply(change)
@@ -65,8 +73,10 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
   }
 
   function onSellKey(e: React.KeyboardEvent) {
-    if (e.ctrlKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); setMethod(METHODS[Number(e.key) - 1]!.id) }
-    if (e.key === 'Backspace' && (e.target as HTMLInputElement).value === '' ) setPicked(null)
+    if (e.ctrlKey && /^[1-3]$/.test(e.key)) { e.preventDefault(); setMethod(METHODS[Number(e.key) - 1]!.id) }
+    // Backspace in an empty price or quantity box goes back to the search (not from the trade-in boxes).
+    const t = e.target as HTMLInputElement
+    if (e.key === 'Backspace' && t.value === '' && (t.getAttribute('aria-label') === 'Sale price' || t.getAttribute('aria-label') === 'Quantity')) setPicked(null)
   }
 
   return (
@@ -110,10 +120,16 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
               </button>
             ))}
           </div>
+          <details className="mb-3 rounded-lg border border-line px-2 py-1">
+            <summary className="cursor-pointer text-sm font-medium">Trade-in: cards received{trades.length > 0 && <span className="ml-2 rounded-full bg-brand px-2 text-xs text-brand-fg">{trades.length}</span>}</summary>
+            <div className="mt-2">
+              <TradeInEditor value={trades} onChange={setTrades} owner={tradeOwnerPick ?? picked.item.profileId} onOwner={setTradeOwnerPick} saleTotalCents={saleTotal} />
+            </div>
+          </details>
           {error && <p role="alert" className="mb-2 text-sm text-red-500">{error}</p>}
           <div className="flex items-center justify-between">
-            <span className="text-lg font-semibold">{formatAud((parseMoney(price) ?? 0) * (Number(qty) || 0))}</span>
-            <button className={btnCls}>Sell (Enter)</button>
+            <span className="text-lg font-semibold">{formatAud(saleTotal)}</span>
+            <button className={btnCls}>{trades.length > 0 ? 'Complete trade' : 'Sell'} (Enter)</button>
           </div>
         </form>
       )}

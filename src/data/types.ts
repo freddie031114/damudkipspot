@@ -1,4 +1,4 @@
-import type { PaymentMethod, ProfileId, SaleLine, SalePayment } from '../domain/sale'
+import type { PaymentMethod, ProfileId, SaleLine, SalePayment, SaleTradeIn } from '../domain/sale'
 
 export type { ProfileId }
 export type ItemKind = 'single' | 'sealed' | 'graded' | 'bulk' | 'other'
@@ -32,7 +32,6 @@ export interface Item extends Base {
   stickerOverrideCents: number | null
   /** The price on the physical sticker; null if not stickered yet. Drives the re-sticker flag. */
   stickeredPriceCents: number | null
-  location: string
   notes: string
   tags: string[]
   lowStockThreshold: number | null
@@ -48,6 +47,8 @@ export interface Lot extends Base {
   unitCostCents: number | null
   source: 'purchase' | 'trade-in' | 'import' | 'opening'
   note: string
+  /** The sale that brought this stock in (trade-ins only). */
+  saleId?: string | null
   importBatchId: string | null
   deletedAt: number | null
 }
@@ -60,6 +61,8 @@ export interface Sale extends Base {
   discountCents: number
   lines: SaleLine[]
   payments: SalePayment[]
+  /** Cards received from the customer in this sale; each created a stock lot costed at the credit given. */
+  tradeIns?: SaleTradeIn[]
   voidedAt: number | null
   voidedBy: ProfileId | null
 }
@@ -105,7 +108,6 @@ export const NEW_ITEM_DEFAULTS = {
   previousMarketPriceCents: null as number | null,
   stickerOverrideCents: null as number | null,
   stickeredPriceCents: null as number | null,
-  location: '',
   notes: '',
   tags: [] as string[],
   lowStockThreshold: null as number | null,

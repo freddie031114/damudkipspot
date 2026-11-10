@@ -3,14 +3,14 @@ import type { ProfileId } from '../data/types'
 import { flagDuplicates } from './sheet'
 import type { ImportRow } from './types'
 
-export type Field = 'name' | 'setName' | 'cardNumber' | 'language' | 'variant' | 'condition' | 'grade' | 'qty' | 'cost' | 'market' | 'location' | 'game'
+export type Field = 'name' | 'setName' | 'cardNumber' | 'language' | 'variant' | 'condition' | 'grade' | 'qty' | 'cost' | 'market' | 'game'
 export type Mapping = Partial<Record<Field, number>>
 
 export const FIELDS: { id: Field; label: string; required?: boolean }[] = [
   { id: 'name', label: 'Name', required: true }, { id: 'market', label: 'Market price' }, { id: 'qty', label: 'Quantity' },
   { id: 'cost', label: 'Cost each' }, { id: 'setName', label: 'Set' }, { id: 'cardNumber', label: 'Card number' },
   { id: 'language', label: 'Language' }, { id: 'variant', label: 'Variant / finish' }, { id: 'condition', label: 'Condition' },
-  { id: 'grade', label: 'Grade (e.g. PSA 10)' }, { id: 'location', label: 'Location' }, { id: 'game', label: 'Game' },
+  { id: 'grade', label: 'Grade (e.g. PSA 10)' }, { id: 'game', label: 'Game' },
 ]
 
 // Header patterns, including the column names Collectr exports are believed to use.
@@ -26,7 +26,6 @@ const GUESS: [Field, RegExp][] = [
   ['variant', /^(variance|variant|finish|printing|edition)$/i],
   ['condition', /condition/i],
   ['grade', /^(grade|grading)$/i],
-  ['location', /(location|binder|box|storage)/i],
   ['game', /^(game|tcg|category)$/i],
 ]
 
@@ -66,7 +65,7 @@ export function parseGeneric(grid: string[][], mapping: Mapping, opts: GenericOp
       key: `g-${i}`, profileId: opts.profileId, include: true, kind: 'single', game: cell(r, 'game') || 'Pokémon', name,
       setName: cell(r, 'setName'), cardNumber: cell(r, 'cardNumber'), language: cell(r, 'language') || 'EN',
       variant: cell(r, 'variant'), condition: cell(r, 'condition'), gradingCompany: '', grade: '', qty: 1,
-      marketCents: null, stickerOverrideCents: null, stickeredCents: null, costCents: null, location: cell(r, 'location'), notes: [],
+      marketCents: null, stickerOverrideCents: null, stickeredCents: null, costCents: null, notes: [],
       source: `Row ${i + 2}`, blocking: [],
     }
     const q = cell(r, 'qty')

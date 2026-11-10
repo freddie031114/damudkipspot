@@ -3,7 +3,7 @@
  * change AND its audit entry together) plus an optional inverse for undo. Nothing here
  * touches Firebase, so it is fully testable and identical online and offline.
  */
-import { saleTotals, validateSale, type SaleDraft } from '../domain/sale'
+import { saleTotals, tradeCreditCents, validateSale, type SaleDraft, type SaleTradeIn } from '../domain/sale'
 import type { Adjustment, Item, Lot, ProfileDoc, ProfileId, Sale, Show, ShowExpense, WriteOp } from './types'
 import { NEW_ITEM_DEFAULTS, type NewItem } from './types'
 import type { ImportRow } from '../import/types'
@@ -128,7 +128,7 @@ export function addLot(ctx: Ctx, item: Item, qty: number, unitCostCents: number 
 
 export type ItemEdit = Partial<Pick<Item,
   'name' | 'setName' | 'setCode' | 'cardNumber' | 'language' | 'variant' | 'condition' | 'gradingCompany' | 'grade' |
-  'sealedType' | 'kind' | 'game' | 'marketPriceCents' | 'stickerOverrideCents' | 'stickeredPriceCents' | 'location' | 'notes' | 'tags' | 'lowStockThreshold'>>
+  'sealedType' | 'kind' | 'game' | 'marketPriceCents' | 'stickerOverrideCents' | 'stickeredPriceCents' | 'notes' | 'tags' | 'lowStockThreshold'>>
 
 /** Updates only the fields that actually changed; the audit entry keeps before/after. */
 export function updateItem(ctx: Ctx, before: Item, edit: ItemEdit): Change | null {
@@ -215,6 +215,33 @@ export function recordSale(ctx: Ctx, draft: SaleDraft, opts: { showId?: string |
   const errors = validateSale(draft)
   if (errors.length) throw new Error(errors.join('. '))
   const id = ctx.newId()
+
+  // Cards taken in trade become new stock: a lot per trade-in, costed at the credit given.
+  // The lot is dated now, so it never feeds a sale that happened before it.
+  const tradeIns: SaleTradeIn[] = []
+  const tradeOps: WriteOp[] = []
+  for (const t of draft.tradeIns ?? []) {
+    let itemId = t.itemId
+    let createdItem = false
+    if (itemId === null) {
+      const n = t.item!
+      const item = makeItem(ctx, {
+        profileId: t.ownerProfileId, name: n.name.trim(), setName: n.setName.trim(), cardNumber: n.cardNumber.trim(),
+        variant: n.variant.trim(), condition: n.condition.trim(), game: n.game || 'Pokémon',
+        marketPriceCents: n.marketPriceCents > 0 ? n.marketPriceCents : t.creditCents,
+      })
+      itemId = item.id
+      createdItem = true
+      tradeOps.push({ collection: 'items', id: item.id, merge: false, data: item as unknown as Record<string, unknown> })
+      if (item.marketPriceCents > 0) tradeOps.push(priceHistoryOp(ctx, item.id, item.marketPriceCents, 'trade-in'))
+    }
+    const lot = lotOp(ctx, itemId, t.ownerProfileId, t.qty, t.creditCents, 'trade-in')
+    lot.data.saleId = id
+    lot.data.note = 'Trade-in'
+    tradeOps.push(lot)
+    tradeIns.push({ itemId, ownerProfileId: t.ownerProfileId, qty: t.qty, creditCents: t.creditCents, lotId: lot.id, createdItem })
+  }
+
   const sale: Sale = {
     id,
     soldByProfileId: draft.soldByProfileId,
@@ -224,6 +251,7 @@ export function recordSale(ctx: Ctx, draft: SaleDraft, opts: { showId?: string |
     discountCents: draft.discountCents,
     lines: draft.lines,
     payments: draft.payments,
+    ...(tradeIns.length ? { tradeIns } : {}),
     voidedAt: null,
     voidedBy: null,
     ...born(ctx),
@@ -232,22 +260,34 @@ export function recordSale(ctx: Ctx, draft: SaleDraft, opts: { showId?: string |
   const owners = [...new Set(draft.lines.map((l) => l.ownerProfileId))]
   return {
     saleId: id,
-    label: `Sale ${(total / 100).toFixed(2)}`,
+    label: tradeIns.length ? `Trade ${(total / 100).toFixed(2)}` : `Sale ${(total / 100).toFixed(2)}`,
     ops: [
       { collection: 'sales', id, merge: false, data: sale as unknown as Record<string, unknown> },
-      audit(ctx, 'sale', id, 'create', owners[0]!, { totalCents: total, lines: draft.lines.length, owners }),
+      ...tradeOps,
+      audit(ctx, 'sale', id, 'create', owners[0]!, {
+        totalCents: total, lines: draft.lines.length, owners,
+        ...(tradeIns.length ? { tradeIns: tradeIns.length, tradeCreditCents: tradeCreditCents(tradeIns) } : {}),
+      }),
     ],
     inverse: (c) => voidSale(c, sale)?.ops ?? [],
   }
 }
 
-/** Voiding is idempotent: an already-voided sale produces no operations. */
+/**
+ * Voiding is idempotent: an already-voided sale produces no operations. Voiding a trade also
+ * takes the cards received back out of stock (and removes any item the trade created).
+ */
 export function voidSale(ctx: Ctx, sale: Sale): Change | null {
   if (sale.voidedAt) return null
+  const trades = sale.tradeIns ?? []
   return {
-    label: 'Sale voided',
+    label: trades.length ? 'Trade voided' : 'Sale voided',
     ops: [
       { collection: 'sales', id: sale.id, merge: true, data: { voidedAt: ctx.now, voidedBy: ctx.actor, ...stamp(ctx) } },
+      ...trades.flatMap((t) => [
+        softDeleteOp(ctx, 'lots', t.lotId, true),
+        ...(t.createdItem ? [softDeleteOp(ctx, 'items', t.itemId, true)] : []),
+      ]),
       audit(ctx, 'sale', sale.id, 'void', sale.lines[0]?.ownerProfileId ?? ctx.actor),
     ],
   }
@@ -280,7 +320,7 @@ export function importItems(ctx: Ctx, rows: ImportRow[], filename: string): Chan
     const item = makeItem(ctx, {
       profileId: r.profileId, name, kind: r.kind, game: r.game, setName: r.setName, cardNumber: r.cardNumber,
       language: r.language, variant: r.variant, condition: r.condition, gradingCompany: r.gradingCompany, grade: r.grade,
-      marketPriceCents: r.marketCents!, stickerOverrideCents: r.stickerOverrideCents, stickeredPriceCents: r.stickeredCents, location: r.location, importBatchId: batchId,
+      marketPriceCents: r.marketCents!, stickerOverrideCents: r.stickerOverrideCents, stickeredPriceCents: r.stickeredCents, importBatchId: batchId,
     })
     const lot = lotOp(ctx, item.id, item.profileId, r.qty, r.costCents, r.costCents === null ? 'opening' : 'import', batchId)
     ops.push({ collection: 'items', id: item.id, merge: false, data: item as unknown as Record<string, unknown>, atom: item.id })

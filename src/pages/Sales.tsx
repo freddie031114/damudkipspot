@@ -22,7 +22,7 @@ const dayStart = (iso: string) => {
 export function SalesPage() {
   const { raw, apply } = useStore()
   const ctx = useChangeCtx()
-  const [tab, setTab] = useState<'log' | 'cards'>('log')
+  const [tab, setTab] = useState<'log' | 'trades' | 'cards'>('log')
   const [owner, setOwner] = useState<ProfileId | 'all'>('all')
   const [seller, setSeller] = useState<ProfileId | 'all'>('all')
   const [showId, setShowId] = useState('all')
@@ -54,6 +54,13 @@ export function SalesPage() {
   const totals = useMemo(() => totalsOf(rows), [rows])
   const cards = useMemo(() => profitPerCard(rows), [rows])
   const fyLabel = financialYearOf(Date.now()).label
+
+  // Sales where cards were taken in trade, within the current filters.
+  const itemName = useMemo(() => new Map(raw.items.map((i) => [i.id, [i.name, i.cardNumber].filter(Boolean).join(' ')])), [raw.items])
+  const trades = useMemo(() => {
+    const ids = new Set(rows.map((r) => r.saleId))
+    return raw.sales.filter((s) => ids.has(s.id) && (s.tradeIns?.length ?? 0) > 0).sort((a, b) => b.soldAt - a.soldAt)
+  }, [rows, raw.sales])
 
   const exportLog = () => downloadText(`sales-${new Date().toISOString().slice(0, 10)}.csv`, salesLogCsv(rows, nameOf))
   const exportCards = () =>
@@ -96,17 +103,41 @@ export function SalesPage() {
         <span>Profit <strong>{formatAud(totals.profitCents)}</strong></span>
         {totals.unknownCostRevenueCents > 0 && <span className="text-accent-ink">{formatAud(totals.unknownCostRevenueCents)} of sales have no cost recorded and are not in profit</span>}
         <span className="ml-auto flex gap-2">
-          <button className={ghostBtn} onClick={tab === 'log' ? exportLog : exportCards} disabled={rows.length === 0}>Export CSV</button>
+          <button className={ghostBtn} onClick={tab === 'cards' ? exportCards : exportLog} disabled={rows.length === 0}>Export CSV</button>
         </span>
       </div>
 
       <div className="mb-2 flex gap-1" role="tablist">
-        {([['log', 'Sales log'], ['cards', 'Profit per card']] as const).map(([k, label]) => (
+        {([['log', 'Sales log'], ['trades', 'Trades'], ['cards', 'Profit per card']] as const).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded px-3 py-1 text-sm ${tab === k ? 'bg-brand text-brand-fg' : 'hover:bg-hover'}`}>{label}</button>
         ))}
       </div>
 
-      {rows.length === 0 ? <p className="opacity-70">No sales match these filters.</p> : tab === 'log' ? (
+      {rows.length === 0 ? <p className="opacity-70">No sales match these filters.</p> : tab === 'trades' ? (
+        trades.length === 0 ? <p className="opacity-70">No trades in this selection. Add cards under “Trade-in” when you sell.</p> : (
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs uppercase"><tr><th className="py-1">When</th><th>Show</th><th>Sold by</th><th>Gave</th><th>Received</th><th className="text-right">Trade credit</th><th className="text-right">Cash difference</th><th /></tr></thead>
+            <tbody>
+              {trades.map((s) => {
+                const credit = s.tradeIns!.reduce((n, t) => n + t.qty * t.creditCents, 0)
+                const cash = s.payments.filter((p) => p.method !== 'trade').reduce((n, p) => n + p.amountCents, 0)
+                return (
+                  <tr key={s.id} className={`border-t border-line align-top ${s.voidedAt ? 'line-through opacity-50' : ''}`}>
+                    <td className="py-1">{fmtDateTime(s.soldAt)}</td>
+                    <td>{raw.shows.find((x) => x.id === s.showId)?.name || '—'}</td>
+                    <td>{nameOf(s.soldByProfileId)}</td>
+                    <td>{s.lines.map((l, i) => <div key={i}>{l.qty} × {itemName.get(l.itemId) ?? 'Unknown'} <span className="opacity-60">{formatAud(l.unitPriceCents)}</span></div>)}</td>
+                    <td>{s.tradeIns!.map((t, i) => <div key={i}>{t.qty} × {itemName.get(t.itemId) ?? 'Unknown'} <span className="opacity-60">{formatAud(t.creditCents)} each → {nameOf(t.ownerProfileId)}</span></div>)}</td>
+                    <td className="text-right">{formatAud(credit)}</td>
+                    <td className="text-right">{cash === 0 ? '—' : cash > 0 ? `${formatAud(cash)} paid` : `${formatAud(-cash)} handed back`}</td>
+                    <td className="pl-3">{!s.voidedAt && <button className="text-xs underline" onClick={() => apply(voidSale(ctx(), s), { undoable: false })}>Void</button>}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )
+      ) : tab === 'log' ? (
         <>
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase"><tr><th className="py-1">When</th><th>Item</th><th>Show</th><th>Sold by</th><th>Stock of</th><th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Revenue</th><th className="text-right">Profit</th><th>Paid</th><th /></tr></thead>

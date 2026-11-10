@@ -104,7 +104,6 @@ export function ItemDrawer({ itemId, onClose }: { itemId: string; onClose: () =>
                   <option value="single">Single</option><option value="graded">Graded slab</option><option value="sealed">Sealed product</option><option value="bulk">Bulk</option><option value="other">Other</option>
                 </select>
               </label>
-              <Text className="col-span-3" label="Location" value={item.location} onCommit={(v) => edit({ location: v.trim() })} />
               <Text className="col-span-4" label="Set" value={item.setName} onCommit={(v) => edit({ setName: v.trim() })} />
               <Text className="col-span-2" label="Language" value={item.language} onCommit={(v) => edit({ language: v.trim() })} />
               <Text className="col-span-3" label="Variant / finish" value={item.variant} onCommit={(v) => edit({ variant: v.trim() })} />

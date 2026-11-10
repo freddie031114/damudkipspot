@@ -53,9 +53,9 @@ export function SettingsPage() {
 
   const exportInventory = () =>
     downloadText(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([
-      ['Owner', 'Name', 'Type', 'Game', 'Set', 'Number', 'Language', 'Variant', 'Condition', 'Grader', 'Grade', 'Qty', 'Market each (AUD)', 'Sticker each (AUD)', 'Known cost (AUD)', 'Location', 'Notes'],
+      ['Owner', 'Name', 'Type', 'Game', 'Set', 'Number', 'Language', 'Variant', 'Condition', 'Grader', 'Grade', 'Qty', 'Market each (AUD)', 'Sticker each (AUD)', 'Known cost (AUD)', 'Notes'],
       ...rows.map((r) => [DEFAULT_NAMES[r.item.profileId], r.item.name, r.item.kind, r.item.game, r.item.setName, r.item.cardNumber, r.item.language, r.item.variant, r.item.condition,
-        r.item.gradingCompany, r.item.grade, r.qty, (r.item.marketPriceCents / 100).toFixed(2), (r.sticker / 100).toFixed(2), (r.knownCostCents / 100).toFixed(2), r.item.location, r.item.notes]),
+        r.item.gradingCompany, r.item.grade, r.qty, (r.item.marketPriceCents / 100).toFixed(2), (r.sticker / 100).toFixed(2), (r.knownCostCents / 100).toFixed(2), r.item.notes]),
     ]))
 
   const exportAll = () =>

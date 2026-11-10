@@ -23,7 +23,6 @@ export interface ImportRow {
   stickeredCents: number | null
   /** Per-unit cost in cents; null when unknown (opening stock). */
   costCents: number | null
-  location: string
   notes: string[]
   /** Where the row came from, e.g. "Left block, row 5". */
   source: string

@@ -5,7 +5,7 @@ const KEYS: [string, string][] = [
   ['G then I D S R P T A', 'Go to Inventory, Dashboard, Shows, Sales, Reprice, Trash, Audit'],
   ['1 / 2', "View Freddie's / Ferrell's stock"], ['Delete', 'Delete selected items'],
   ['Enter', 'Edit focused cell, or confirm'], ['Esc', 'Cancel edit / close'], ['↑ ↓ Enter', 'Move and pick in quick sell'],
-  ['Ctrl+1–4', 'Payment: cash, card, PayID, trade'], ['Ctrl+Enter', 'Complete the sale in Show mode'], ['?', 'This cheat sheet'],
+  ['Ctrl+1–3', 'Payment for the balance: cash, card, PayID'], ['Ctrl+Enter', 'Complete the sale in Show mode'], ['?', 'This cheat sheet'],
 ]
 
 export function CheatSheet({ onClose }: { onClose: () => void }) {

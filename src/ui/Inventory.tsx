@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { adjustStock, combineChanges, createItem, deleteItems, markStickered, updateItem } from '../data/changes'
+import { adjustStock, createItem, deleteItems, markStickered, updateItem } from '../data/changes'
 import { matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
@@ -11,10 +11,11 @@ import { SavedViews } from './SavedViews'
 import { useUi } from './UiContext'
 
 export type View = ProfileId
-type SortKey = 'name' | 'qty' | 'market' | 'sticker' | 'value' | 'location'
+type SortKey = 'name' | 'qty' | 'market' | 'sticker' | 'value'
+const SORT_KEYS: SortKey[] = ['name', 'qty', 'market', 'sticker', 'value']
 
 // One "Card" column holds the name plus its number, set, variant, language, condition and flags.
-const COLS = '24px minmax(280px,6fr) 52px 84px 84px 92px minmax(72px,1fr) 104px'
+const COLS = '24px minmax(280px,6fr) 52px 84px 84px 92px 104px'
 
 function EditableCell({ display, initial, onCommit, disabled, align = 'left', label }: {
   display: ReactNode; initial: string; onCommit: (v: string) => void; disabled?: boolean; align?: 'left' | 'right'; label: string
@@ -87,7 +88,6 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const { rows, apply, notify, ready } = useStore()
   const ctx = useChangeCtx()
   const { openItem, openImport, setView, setSearch } = useUi()
-  const [moveTo, setMoveTo] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'value', dir: -1 })
   const [onlySticker, setOnlySticker] = useState(false)
 
@@ -100,7 +100,6 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
         case 'market': return r.item.marketPriceCents
         case 'sticker': return r.sticker
         case 'value': return r.marketValueCents
-        case 'location': return r.item.location.toLowerCase()
       }
     }
     return list.sort((a, b) => {
@@ -160,7 +159,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
           <label className="flex items-center gap-1 text-accent-ink"><input type="checkbox" checked={onlySticker} onChange={(e) => setOnlySticker(e.target.checked)} /> Needs re-sticker ({totals.resticker})</label>
         )}
         <SavedViews current={{ view, search, sortKey: sort.key, sortDir: sort.dir, onlySticker }}
-          onApply={(v) => { setView(v.view); setSearch(v.search); setSort({ key: v.sortKey as SortKey, dir: v.sortDir }); setOnlySticker(v.onlySticker) }} />
+          onApply={(v) => { setView(v.view); setSearch(v.search); setSort({ key: SORT_KEYS.includes(v.sortKey as SortKey) ? (v.sortKey as SortKey) : 'value', dir: v.sortDir }); setOnlySticker(v.onlySticker) }} />
         {selected.size > 0 && (
           <span className="ml-auto flex items-center gap-2">
             {selected.size} selected
@@ -172,14 +171,6 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
               const chosen = rows.filter((r) => selected.has(r.item.id))
               apply(markStickered(ctx(), chosen)); setSelected(new Set())
             }}>Mark stickered</button>
-            <input className="w-36 rounded border border-line bg-transparent px-1 py-0.5" aria-label="Move selected to location" placeholder="Move to location ↵" value={moveTo}
-              onChange={(e) => setMoveTo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter' || !moveTo.trim()) return
-                const chosen = rows.filter((r) => selected.has(r.item.id))
-                apply(combineChanges(`Moved ${chosen.length} item(s) to ${moveTo.trim()}`, chosen.map((r) => updateItem(ctx(), r.item, { location: moveTo.trim() }))))
-                setMoveTo(''); setSelected(new Set())
-              }} />
           </span>
         )}
       </div>
@@ -189,7 +180,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
           onChange={() => setSelected(allSelected ? new Set() : new Set(visible.map((r) => r.item.id)))} />
         {header('name', 'Card')}
         {header('qty', 'Qty', true)}{header('market', 'Market', true)}{header('sticker', 'Sticker', true)}{header('value', 'Value', true)}
-        {header('location', 'Location')}<span className="sr-only">Actions</span>
+        <span className="sr-only">Actions</span>
       </div>
 
       <div ref={parentRef} className="min-h-0 flex-1 overflow-auto" data-testid="inventory-scroll">
@@ -230,8 +221,6 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
                   display={<span title={it.stickerOverrideCents !== null ? 'Manual sticker override' : 'Market x 1.1'}>{formatAud(r.sticker)}{it.stickerOverrideCents !== null && '*'}</span>}
                   onCommit={(v) => { const m = money(v); if (m === 'bad') return notify('Enter a valid sticker price, or leave blank to use market x 1.1', true); run(() => updateItem(ctx(), it, { stickerOverrideCents: m })) }} />
                 <div className="px-1 text-right">{formatAud(r.marketValueCents)}</div>
-                <EditableCell label={`location of ${it.name}`} initial={it.location} display={it.location || <span className="opacity-40">—</span>}
-                  onCommit={(v) => run(() => updateItem(ctx(), it, { location: v.trim() }))} />
                 <div className="flex items-center justify-end gap-1 text-xs">
                   <button className="rounded px-1.5 underline opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label={`Open ${it.name}`} onClick={() => openItem(it.id)}>Open</button>
                   <button className={`${btnCls} !px-2 !py-0.5 !text-xs opacity-0 group-hover:opacity-100 focus:opacity-100`} aria-label={`Sell ${it.name}`} disabled={r.qty < 1} onClick={() => onSell(r)}>Sell</button>

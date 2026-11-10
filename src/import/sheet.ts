@@ -10,7 +10,7 @@ function baseRow(key: string, profileId: ProfileId, source: string): ImportRow {
   return {
     key, profileId, include: true, kind: 'single', game: 'Pokémon', name: '', setName: '', cardNumber: '', language: 'EN',
     variant: '', condition: '', gradingCompany: '', grade: '', qty: 1, marketCents: null, stickerOverrideCents: null, stickeredCents: null,
-    costCents: null, location: '', notes: [], source, blocking: [],
+    costCents: null, notes: [], source, blocking: [],
   }
 }
 

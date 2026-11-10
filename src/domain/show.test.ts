@@ -6,8 +6,8 @@ const known = (c: number): LineCost => ({ knownCostCents: c, unknownCostQty: 0, 
 const unknown: LineCost = { knownCostCents: 0, unknownCostQty: 1, oversoldQty: 0 }
 const line = (owner: 'p1' | 'p2', price: number, qty = 1): SaleLine => ({ itemId: 'x', ownerProfileId: owner, qty, stickerPriceCents: price, unitPriceCents: price })
 const pay = (method: SalePayment['method'], amount: number, by: 'p1' | 'p2'): SalePayment => ({ method, amountCents: amount, receivedByProfileId: by })
-const sale = (id: string, lines: SaleLine[], payments: SalePayment[], discount = 0, voided = false): SummarySale =>
-  ({ id, lines, payments, discountCents: discount, voidedAt: voided ? 1 : null })
+const sale = (id: string, lines: SaleLine[], payments: SalePayment[], discount = 0, voided = false, tradeIns?: SummarySale['tradeIns']): SummarySale =>
+  ({ id, lines, payments, discountCents: discount, voidedAt: voided ? 1 : null, ...(tradeIns ? { tradeIns } : {}) })
 const base = { expenses: [], participants: [] as never[], costOf: () => known(0) }
 
 describe('allocate', () => {
@@ -115,6 +115,40 @@ describe('summarizeShow', () => {
     expect(r.settlement).toBeNull()
     expect(r.perProfile.p1.collectedCents).toBe(0)
     expect(r.perProfile.p2.revenueCents).toBe(5000)
+  })
+
+  it('a trade into the same person\'s stock settles only the cash top-up', () => {
+    // Ferrell's $50 card, paid $30 in trade (cards into Ferrell's stock) and $20 cash taken by Freddie.
+    const r = summarizeShow({
+      ...base,
+      sales: [sale('a', [line('p2', 5000)], [pay('trade', 3000, 'p1'), pay('cash', 2000, 'p1')], 0, false, [{ itemId: 'n', ownerProfileId: 'p2', qty: 1, creditCents: 3000, lotId: 'l', createdItem: true }])],
+    })
+    expect(r.byMethod).toMatchObject({ trade: 3000, cash: 2000 })
+    expect(r.perProfile.p2.entitledCents).toBe(2000)
+    expect(r.settlement).toEqual({ from: 'p1', to: 'p2', amountCents: 2000 })
+  })
+
+  it('cards traded into the other person\'s stock are paid for in the settlement', () => {
+    // Freddie's $50 card, $50 in trade, but the cards go into Ferrell's stock: Freddie is owed $50 by Ferrell.
+    const r = summarizeShow({
+      ...base,
+      sales: [sale('a', [line('p1', 5000)], [pay('trade', 5000, 'p1')], 0, false, [{ itemId: 'n', ownerProfileId: 'p2', qty: 1, creditCents: 5000, lotId: 'l', createdItem: false }])],
+    })
+    expect(r.perProfile.p1.entitledCents).toBe(5000)
+    expect(r.perProfile.p2.entitledCents).toBe(-5000)
+    expect(r.settlement).toEqual({ from: 'p2', to: 'p1', amountCents: 5000 })
+  })
+
+  it('cash handed back to a customer comes out of the till and the stock owner\'s share', () => {
+    // $80 card, $100 of cards received, $20 cash paid out by Freddie. All stock is Freddie's.
+    const r = summarizeShow({
+      ...base,
+      sales: [sale('a', [line('p1', 8000)], [pay('trade', 10000, 'p1'), pay('cash', -2000, 'p1')], 0, false, [{ itemId: 'n', ownerProfileId: 'p1', qty: 1, creditCents: 10000, lotId: 'l', createdItem: true }])],
+      participants: [{ profileId: 'p1', openingFloatCents: 5000, closingCashCents: 3000 }],
+    })
+    expect(r.perProfile.p1.cashCollectedCents).toBe(-2000)
+    expect(r.perProfile.p1.cashDifferenceCents).toBe(0)
+    expect(r.settlement).toBeNull()
   })
 
   it('reconciles cash against the float', () => {

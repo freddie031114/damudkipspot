@@ -6,13 +6,18 @@ import { useChangeCtx, useStore } from '../data/store'
 import { addToCart, cartToDraft, cartTotals, oversoldLines, type CartLine } from '../domain/cart'
 import { formatAud, parseMoney } from '../domain/money'
 import type { PaymentMethod } from '../domain/sale'
+import { toTradeInInputs, type TradeInDraft } from '../domain/trade'
+import type { ProfileId } from '../data/types'
 import { DEFAULT_NAMES, PROFILE_IDS, useActingProfile } from '../lib/profile'
 import { toggleTheme } from '../lib/theme'
 import { btnCls, ghostBtn, inputCls } from '../ui/common'
+import { TradeInEditor } from '../ui/TradeInEditor'
 import { methodLabel, nameOf } from '../ui/format'
 import { useShow } from './showSummary'
 
-const METHODS: PaymentMethod[] = ['cash', 'card', 'payid', 'trade']
+/** How the customer pays whatever the trade does not cover. Trade credit comes from the trade-in cards. */
+const METHODS: PaymentMethod[] = ['cash', 'card', 'payid']
+const TAKINGS: PaymentMethod[] = ['cash', 'card', 'payid', 'trade']
 
 /** Minimal, fast selling screen for use at the table. */
 export function ShowMode() {
@@ -26,6 +31,8 @@ export function ShowMode() {
   const [cart, setCart] = useState<CartLine[]>([])
   const [discount, setDiscount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('cash')
+  const [trades, setTrades] = useState<TradeInDraft[]>([])
+  const [tradeOwnerPick, setTradeOwnerPick] = useState<ProfileId | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
   const results = useMemo(() => {
@@ -41,6 +48,8 @@ export function ShowMode() {
   const discountCents = discount.trim() === '' ? 0 : parseMoney(discount)
   const totals = cartTotals(cart, discountCents ?? 0)
   const warn = oversoldLines(cart)
+  // New trade-in cards go to whoever owns the stock being sold, unless chosen otherwise.
+  const tradeOwner = tradeOwnerPick ?? cart[0]?.ownerProfileId ?? acting ?? 'p1'
 
   function add(r: InventoryRow) {
     setCart((c) => addToCart(c, { itemId: r.item.id, ownerProfileId: r.item.profileId, name: [r.item.name, r.item.cardNumber].filter(Boolean).join(' '), stickerPriceCents: r.sticker, unitPriceCents: r.sticker, available: r.qty }))
@@ -53,8 +62,10 @@ export function ShowMode() {
     if (cart.length === 0) return notify('Add an item first', true)
     if (discountCents === null) return notify('Discount is not a valid amount', true)
     try {
-      apply(recordSale(ctx(), cartToDraft(cart, { soldBy: acting, method, discountCents }), { showId: show.id }))
+      apply(recordSale(ctx(), cartToDraft(cart, { soldBy: acting, method, discountCents, tradeIns: toTradeInInputs(trades) }), { showId: show.id }))
       setCart([])
+      setTrades([])
+      setTradeOwnerPick(null)
       setDiscount('')
       setQuery('')
       searchRef.current?.focus()
@@ -69,7 +80,7 @@ export function ShowMode() {
     else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); complete() }
     else if (e.key === 'Enter') { e.preventDefault(); const r = results[cursor]; if (r) add(r) }
     else if (e.key === 'Escape') { setQuery('') }
-    else if (e.ctrlKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); setMethod(METHODS[Number(e.key) - 1]!) }
+    else if (e.ctrlKey && /^[1-3]$/.test(e.key)) { e.preventDefault(); setMethod(METHODS[Number(e.key) - 1]!) }
   }
 
   const patchLine = (i: number, p: Partial<CartLine>) => setCart((c) => c.map((l, n) => (n === i ? { ...l, ...p } : l)))
@@ -83,7 +94,7 @@ export function ShowMode() {
         <div className="ml-4 text-sm"><span className="opacity-70">Takings</span> <strong className="text-2xl" aria-label="Takings total">{formatAud(summary.totalCents)}</strong>
           <span className="ml-3 opacity-70">{summary.salesCount} sales</span></div>
         <div className="flex gap-3 text-xs opacity-80" aria-label="Takings by payment method">
-          {METHODS.filter((m) => summary.byMethod[m] > 0).map((m) => <span key={m}>{methodLabel[m]} {formatAud(summary.byMethod[m])}</span>)}
+          {TAKINGS.filter((m) => summary.byMethod[m] > 0).map((m) => <span key={m}>{methodLabel[m]} {formatAud(summary.byMethod[m])}</span>)}
         </div>
         <span className="ml-auto flex items-center gap-3">
           <span role="status" className={`rounded-full px-3 py-0.5 text-xs ${!online ? 'bg-accent/20 text-accent-ink' : pending ? 'bg-brand/20' : 'bg-emerald-500/20'}`}>{!online ? 'Offline: saved here' : pending ? 'Syncing…' : 'Synced'}</span>
@@ -126,7 +137,7 @@ export function ShowMode() {
                 const total = s.lines.reduce((n, l) => n + l.qty * l.unitPriceCents, 0) - s.discountCents
                 return (
                   <li key={s.id} className={`flex items-center justify-between border-t border-line py-1 ${s.voidedAt ? 'line-through opacity-50' : ''}`}>
-                    <span>{new Date(s.soldAt).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })} · {s.lines.length} item(s) · {nameOf(s.soldByProfileId)} · {[...new Set(s.payments.map((p) => methodLabel[p.method]))].join('+')}</span>
+                    <span>{new Date(s.soldAt).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })} · {s.lines.length} item(s) · {nameOf(s.soldByProfileId)} · {[...new Set(s.payments.map((p) => methodLabel[p.method]))].join('+')}{s.tradeIns?.length ? ` · ${s.tradeIns.reduce((n, t) => n + t.qty, 0)} card(s) in` : ''}</span>
                     <span>{formatAud(total)} {!s.voidedAt && <button className="ml-2 text-xs underline" onClick={() => apply(voidSale(ctx(), s), { undoable: false })}>Void</button>}</span>
                   </li>
                 )
@@ -160,14 +171,20 @@ export function ShowMode() {
           <label className="mb-2 flex items-center justify-between text-sm">Bundle discount
             <input className={`${inputCls} w-24 text-right`} aria-label="Discount" inputMode="decimal" placeholder="$0.00" value={discount} onChange={(e) => setDiscount(e.target.value)} />
           </label>
-          <div className="mb-2 flex gap-1" role="radiogroup" aria-label="Payment method">
+          <details className="mb-2 rounded-lg border border-line px-2 py-1">
+            <summary className="cursor-pointer text-sm font-medium">Trade-in: cards received{trades.length > 0 && <span className="ml-2 rounded-full bg-brand px-2 text-xs text-brand-fg">{trades.length}</span>}</summary>
+            <div className="mt-2 max-h-72 overflow-y-auto">
+              <TradeInEditor value={trades} onChange={setTrades} owner={tradeOwner} onOwner={setTradeOwnerPick} saleTotalCents={totals.totalCents} />
+            </div>
+          </details>
+          <div className="mb-2 flex gap-1" role="radiogroup" aria-label={trades.length > 0 ? 'Payment method for the balance' : 'Payment method'}>
             {METHODS.map((m, i) => (
               <button key={m} role="radio" aria-checked={method === m} onClick={() => { setMethod(m); searchRef.current?.focus() }}
                 className={`flex-1 rounded-lg border px-1 py-1.5 text-sm ${method === m ? 'border-brand bg-brand text-brand-fg' : 'border-line'}`}>{methodLabel[m]}<span className="block text-[10px] opacity-60">Ctrl+{i + 1}</span></button>
             ))}
           </div>
           <div className="mb-2 flex items-baseline justify-between"><span>Total</span><strong className="text-3xl" aria-label="Sale total">{formatAud(totals.totalCents)}</strong></div>
-          <button className={`${btnCls} !py-3 !text-lg`} onClick={complete} disabled={cart.length === 0}>Sell (Ctrl+Enter)</button>
+          <button className={`${btnCls} !py-3 !text-lg`} onClick={complete} disabled={cart.length === 0}>{trades.length > 0 ? 'Complete trade' : 'Sell'} (Ctrl+Enter)</button>
         </aside>
       </div>
     </div>
