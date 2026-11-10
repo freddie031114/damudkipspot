@@ -180,7 +180,15 @@ Card metadata autocomplete from an external database, automatic price providers,
 
 ## Existing inventory (Google Sheet "Inventory")
 
-Read on 2026-11-10. Layout: two side-by-side blocks (columns A–E and F–J), presumably one per person. Each has Cards / Market / Sticker, a Total, a Bulk figure and a Slabs total. About 48 rows in the left block, 52 in the right, plus 15 slabs in the left block.
+Read on 2026-11-10. Layout: two side-by-side blocks. **Left (columns A–E) is the friend's; right (columns F–J) is the owner's.**
+
+Answers from the owner (resolved):
+- **Slab price is the market price.** Sticker is computed as market × 1.1, rounded like everything else. The friend's block is the only one with slabs (15 rows, $15,470).
+- **Lucario SWSH 291:** quantity 8, market $32 each ($256 total), sticker $35 each. The "35 each" in the name is the sticker price, which matches 32 × 1.1 rounded.
+- **"Sealed" means a sealed promo** (a single still in its sealed promo pack). Import as `kind = single` with variant "Sealed promo". Not a sealed-product item.
+- **No purchase costs exist.** All opening lots import with null cost. Profit reports show opening-stock sales as revenue with "cost unknown" and keep them out of profit totals, so profit is never overstated. Costs can be added later per lot or in bulk, and reports then update.
+
+Original findings: about 48 rows in the left block, 52 in the right. Each has Cards / Market / Sticker, a Total, a Bulk figure and a Slabs total. About 48 rows in the left block, 52 in the right, plus 15 slabs in the left block.
 
 What this tells us:
 - **Sticker is already ~1.1 × market, rounded to the nearest $1** in the left block. The right block sometimes rounds up to $5 (Arbok $35 → $40, Steelix $35 → $40, Charizard 094/080 $40 → $45), which the manual sticker override and the $5 rounding option cover.
@@ -236,7 +244,6 @@ Each phase ends with passing tests and a working app.
 - A Supabase project (URL, anon key, and a service-role key for migrations and CI only) and a Vercel project.
 - The two login emails and display names.
 - A real Collectr CSV export to build and test the import preset against.
-- Which block of the existing sheet belongs to which person (see below), and any purchase costs you can recover.
 
 ## Conventions
 
