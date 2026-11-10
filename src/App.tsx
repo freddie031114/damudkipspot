@@ -9,8 +9,8 @@ import { Logo } from './ui/Logo'
 import { Shell } from './ui/Shell'
 import { DEFAULT_NAMES, PROFILE_IDS, useActingProfile } from './lib/profile'
 
-const card = 'mx-auto mt-24 max-w-md rounded-lg border border-line p-6'
-const button = 'rounded bg-brand px-4 py-2 font-medium text-brand-fg hover:bg-brand-hover disabled:opacity-50'
+const card = 'mx-auto mt-24 max-w-md rounded-2xl border border-line bg-surface p-8 shadow-card'
+const button = 'rounded-lg bg-brand px-4 py-2 font-medium text-brand-fg shadow-sm transition-colors hover:bg-brand-hover disabled:opacity-50'
 
 function SetupNeeded() {
   return (

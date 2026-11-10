@@ -38,14 +38,14 @@ export function ShowsPage() {
   }
 
   return (
-    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Shows</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Shows</h1>
         <button className={btnCls} onClick={() => setOpen(!open)}>{open ? 'Cancel' : 'New show'}</button>
       </div>
 
       {open && (
-        <form onSubmit={submit} className="mb-4 grid max-w-3xl grid-cols-6 gap-3 rounded-lg border border-line bg-surface p-4" aria-label="New show">
+        <form onSubmit={submit} className="mb-4 grid max-w-3xl grid-cols-6 gap-3 rounded-2xl border border-line bg-surface shadow-card p-4" aria-label="New show">
           <label className="col-span-6 text-xs font-medium sm:col-span-3">Show name<input className={inputCls} autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Brisbane Card Show" /></label>
           <label className="col-span-3 text-xs font-medium sm:col-span-1">Starts<input className={inputCls} type="date" value={f.startsOn} onChange={(e) => setF({ ...f, startsOn: e.target.value })} /></label>
           <label className="col-span-3 text-xs font-medium sm:col-span-1">Ends<input className={inputCls} type="date" value={f.endsOn} onChange={(e) => setF({ ...f, endsOn: e.target.value })} /></label>
@@ -69,7 +69,7 @@ export function ShowsPage() {
             costOf: () => ({ knownCostCents: 0, unknownCostQty: 0, oversoldQty: 0 }),
           })
           return (
-            <li key={s.id} className="rounded-lg border border-line bg-surface p-3">
+            <li key={s.id} className="rounded-2xl border border-line bg-surface shadow-card p-3">
               <div className="flex items-start justify-between gap-2">
                 <Link to={`/shows/${s.id}`} className="text-lg font-semibold underline">{s.name}</Link>
                 <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusStyle[s.status]}`}>{s.status}</span>

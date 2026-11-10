@@ -9,7 +9,7 @@ import { useUi } from '../ui/UiContext'
 
 function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-lg border border-line bg-surface p-3">
+    <div className="rounded-2xl border border-line bg-surface shadow-card p-3">
       <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
       <div className="text-2xl font-semibold">{value}</div>
       {sub && <div className="text-xs opacity-70">{sub}</div>}
@@ -22,7 +22,7 @@ const DAY = 86_400_000
 export function Dashboard() {
   const { rows, raw } = useStore()
   const { view, openItem } = useUi()
-  const scoped = useMemo(() => rows.filter((r) => view === 'all' || r.item.profileId === view), [rows, view])
+  const scoped = useMemo(() => rows.filter((r) => r.item.profileId === view), [rows, view])
 
   const stats = useMemo(() => {
     const priced = scoped.filter((r) => r.qty > 0)
@@ -75,10 +75,10 @@ export function Dashboard() {
   }, [log])
 
   const totals = useMemo(() => totalsOf(log), [log])
-  const title = view === 'all' ? 'Combined' : `${nameOf(view)}'s stock`
+  const title = `${nameOf(view)}'s stock`
 
   return (
-    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <h1 className="mb-3 text-xl font-semibold">Dashboard · {title}</h1>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Tile label="Market value" value={formatAud(stats.market)} sub={`${stats.items} items, ${stats.units} units`} />
@@ -89,7 +89,7 @@ export function Dashboard() {
         <Tile label="Needs attention" value={String(stats.stale + stats.oversold + stats.resticker + low.length)} sub={`${stats.stale} stale · ${stats.resticker} re-sticker · ${low.length} low · ${stats.oversold} oversold`} />
       </div>
 
-      <div className="mb-4 rounded-lg border border-line bg-surface p-3">
+      <div className="mb-4 rounded-2xl border border-line bg-surface shadow-card p-3">
         <h2 className="mb-2 font-semibold">Sales, last 30 days</h2>
         {totals.count === 0 ? <p className="text-sm opacity-70">No sales yet.</p> : (
           <div className="h-48" role="img" aria-label="Daily sales for the last 30 days">
@@ -107,7 +107,7 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <section className="rounded-lg border border-line bg-surface p-3" aria-label="Top movers">
+        <section className="rounded-2xl border border-line bg-surface shadow-card p-3" aria-label="Top movers">
           <h2 className="mb-2 font-semibold">Top movers</h2>
           {movers.length === 0 ? <p className="text-sm opacity-70">Prices haven't changed yet. Movers show up after you update a market price.</p> : (
             <ul className="text-sm">
@@ -121,7 +121,7 @@ export function Dashboard() {
           )}
         </section>
 
-        <section className="rounded-lg border border-line bg-surface p-3" aria-label="Low stock">
+        <section className="rounded-2xl border border-line bg-surface shadow-card p-3" aria-label="Low stock">
           <h2 className="mb-2 font-semibold">Low stock</h2>
           {low.length === 0 ? <p className="text-sm opacity-70">Nothing is low. Set a "low stock" level on an item to track it.</p> : (
             <ul className="text-sm">
@@ -135,7 +135,7 @@ export function Dashboard() {
           )}
         </section>
 
-        <section className="rounded-lg border border-line bg-surface p-3" aria-label="Recent sales">
+        <section className="rounded-2xl border border-line bg-surface shadow-card p-3" aria-label="Recent sales">
           <h2 className="mb-2 font-semibold">Recent sales</h2>
           {log.length === 0 ? <p className="text-sm opacity-70">No sales yet.</p> : (
             <ul className="text-sm">

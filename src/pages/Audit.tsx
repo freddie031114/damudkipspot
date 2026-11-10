@@ -37,9 +37,9 @@ export function AuditPage() {
   const shown = (entries ?? []).filter((e) => (actor === 'all' || e.actorProfileId === actor) && (entity === 'all' || e.entity === entity))
 
   return (
-    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">Audit log</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Audit log</h1>
         <span className="text-sm opacity-70">The latest {LIMIT} changes: who did what, and what it was before.</span>
         <label className="ml-auto text-sm">Who{' '}
           <select className="rounded border border-line bg-transparent px-1 py-0.5" value={actor} onChange={(e) => setActor(e.target.value as ProfileId | 'all')}><option value="all">Anyone</option>{PROFILE_IDS.map((p) => <option key={p} value={p}>{DEFAULT_NAMES[p]}</option>)}</select></label>

@@ -11,7 +11,7 @@ import { statusStyle } from './Shows'
 import { useShow } from './showSummary'
 
 const lbl = 'block text-xs font-medium'
-const box = 'rounded-lg border border-line bg-surface p-4'
+const box = 'rounded-2xl border border-line bg-surface shadow-card p-4'
 
 export function ShowDetail() {
   const { id } = useParams()
@@ -44,10 +44,10 @@ export function ShowDetail() {
 
   const s = summary
   return (
-    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <Link to="/shows" className="text-sm underline">‹ Shows</Link>
-        <h1 className="text-xl font-semibold">{show.name}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{show.name}</h1>
         <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusStyle[show.status]}`}>{show.status}</span>
         <span className="ml-auto flex gap-2">
           {show.status === 'planned' && <button className={btnCls} onClick={() => edit({ status: 'live' })}>Start show</button>}

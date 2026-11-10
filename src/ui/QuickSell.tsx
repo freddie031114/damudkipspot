@@ -105,7 +105,7 @@ export function QuickSell({ initial, onClose }: { initial?: InventoryRow; onClos
           <div className="mb-3 flex gap-2" role="radiogroup" aria-label="Payment method">
             {METHODS.map((m, i) => (
               <button type="button" key={m.id} role="radio" aria-checked={method === m.id} onClick={() => setMethod(m.id)}
-                className={`flex-1 rounded border px-2 py-1.5 text-sm ${method === m.id ? 'border-brand bg-brand text-brand-fg' : 'border-line'}`}>
+                className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${method === m.id ? 'border-brand bg-brand text-brand-fg' : 'border-line'}`}>
                 {m.label} <span className="text-xs opacity-60">Ctrl+{i + 1}</span>
               </button>
             ))}

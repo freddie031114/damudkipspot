@@ -1,34 +1,38 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Mudkip palette: pond-blue body, orange cheek gills, deep navy for text and dark mode. */
+/* Mudkip palette: pond-blue, orange cheek gills, deep navy. */
 :root {
   color-scheme: light;
-  --page: #f3fafe;
+  --page: #f3f7fb;
   --surface: #ffffff;
-  --ink: #10283d;
-  --line: #c4dcea;
-  --hover: #e4f2fa;
-  --chip: #d3e9f6;
-  --brand: #1b78b8;
-  --brand-hover: #14659e;
+  --ink: #0f2438;
+  --line: #dfe9f2;
+  --hover: #eaf3fa;
+  --chip: #dcecf7;
+  --brand: #1a76b5;
+  --brand-hover: #13609a;
   --brand-fg: #ffffff;
-  --accent: #ee8620;
+  --accent: #f08a24;
   --accent-ink: #8f4300;
+  --side: #0c2236;
+  --side-ink: #c9dff0;
 }
 .dark {
   color-scheme: dark;
-  --page: #0a1a29;
-  --surface: #102639;
-  --ink: #e4f3fc;
-  --line: #24435c;
-  --hover: #163550;
-  --chip: #1d4161;
+  --page: #08141f;
+  --surface: #0f2234;
+  --ink: #e6f3fc;
+  --line: #1f3a52;
+  --hover: #15304a;
+  --chip: #1b3f5e;
   --brand: #5cc4f2;
   --brand-hover: #84d3f6;
   --brand-fg: #06202f;
   --accent: #f59a3d;
   --accent-ink: #ffc27a;
+  --side: #061018;
+  --side-ink: #b7d3e8;
 }
 
 @theme inline {
@@ -43,9 +47,20 @@
   --color-brand-fg: var(--brand-fg);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
+  --color-side: var(--side);
+  --color-side-ink: var(--side-ink);
+  --shadow-card: 0 1px 2px rgb(15 36 56 / 0.05), 0 6px 20px rgb(15 36 56 / 0.05);
+  --shadow-pop: 0 10px 40px rgb(8 20 31 / 0.25);
 }
 
-body { background: var(--page); color: var(--ink); }
+html { font-feature-settings: 'cv11', 'ss01'; -webkit-font-smoothing: antialiased; }
+body { background: var(--page); color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.005em; }
 input, select, textarea { color: inherit; }
+input:not([type='checkbox']):not([type='radio']):not([type='file']), select, textarea { border-radius: 0.6rem; }
+input[type='checkbox'], input[type='radio'] { accent-color: var(--brand); }
 option { background: var(--surface); color: var(--ink); }
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+::selection { background: color-mix(in srgb, var(--brand) 30%, transparent); }
+
+/* Quiet, thin scrollbars. */
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 22%, transparent) transparent; }

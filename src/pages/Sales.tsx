@@ -63,7 +63,7 @@ export function SalesPage() {
     ]))
 
   return (
-    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <h1 className="mb-3 text-xl font-semibold">Sales</h1>
       <div className="mb-3 flex flex-wrap items-end gap-3" aria-label="Filters">
         <label className="text-xs">Stock of
@@ -89,7 +89,7 @@ export function SalesPage() {
         <label className="flex items-center gap-1 pb-1 text-xs"><input type="checkbox" checked={voided} onChange={(e) => setVoided(e.target.checked)} /> Show voided</label>
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm" aria-label="Totals">
+      <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-2xl border border-line bg-surface shadow-card px-3 py-2 text-sm" aria-label="Totals">
         <span><strong>{totals.count}</strong> lines</span>
         <span>Revenue <strong>{formatAud(totals.revenueCents)}</strong></span>
         <span>Cost <strong>{formatAud(totals.costCents)}</strong></span>

@@ -3,7 +3,7 @@ import { Modal } from './common'
 const KEYS: [string, string][] = [
   ['Ctrl+K', 'Command palette: any screen, action or card'], ['/', 'Search'], ['N', 'Add stock'], ['S', 'Quick sell'], ['Ctrl+Z', 'Undo last change'],
   ['G then I D S R P T A', 'Go to Inventory, Dashboard, Shows, Sales, Reprice, Trash, Audit'],
-  ['1 / 2 / 3', 'View: Freddie / Ferrell / Combined'], ['Delete', 'Delete selected items'],
+  ['1 / 2', "View Freddie's / Ferrell's stock"], ['Delete', 'Delete selected items'],
   ['Enter', 'Edit focused cell, or confirm'], ['Esc', 'Cancel edit / close'], ['↑ ↓ Enter', 'Move and pick in quick sell'],
   ['Ctrl+1–4', 'Payment: cash, card, PayID, trade'], ['Ctrl+Enter', 'Complete the sale in Show mode'], ['?', 'This cheat sheet'],
 ]

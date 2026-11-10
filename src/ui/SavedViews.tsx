@@ -3,7 +3,7 @@ import { ghostBtn } from './common'
 
 export interface SavedView {
   name: string
-  view: 'p1' | 'p2' | 'all'
+  view: 'p1' | 'p2'
   search: string
   sortKey: string
   sortDir: 1 | -1
@@ -15,7 +15,9 @@ const KEY = 'damudkipspot.savedViews'
 function load(): SavedView[] {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '[]') as unknown
-    return Array.isArray(raw) ? (raw as SavedView[]).filter((v) => v && typeof v.name === 'string') : []
+    return Array.isArray(raw)
+      ? (raw as SavedView[]).filter((v) => v && typeof v.name === 'string').map((v) => (v.view === 'p1' || v.view === 'p2' ? v : { ...v, view: 'p1' as const }))
+      : []
   } catch {
     return []
   }
@@ -53,7 +55,7 @@ export function SavedViews({ current, onApply }: { current: Omit<SavedView, 'nam
   return (
     <span className="flex items-center gap-1" aria-label="Saved views">
       {views.length > 0 && (
-        <select aria-label="Saved views" className="rounded border border-line bg-transparent px-1 py-0.5" value=""
+        <select aria-label="Saved views" className="rounded-lg border border-line bg-transparent px-2 py-1 text-xs" value=""
           onChange={(e) => { const v = views.find((x) => x.name === e.target.value); if (v) onApply(v) }}>
           <option value="">Saved views…</option>
           {views.map((v) => <option key={v.name} value={v.name}>{v.name}</option>)}
@@ -66,7 +68,7 @@ export function SavedViews({ current, onApply }: { current: Omit<SavedView, 'nam
           <button className={ghostBtn} onClick={save}>Save</button>
         </>
       ) : (
-        <button className="underline" onClick={() => setNaming(true)}>Save view</button>
+        <button className="rounded-lg border border-line px-2.5 py-1 text-xs transition-colors hover:bg-hover" onClick={() => setNaming(true)}>Save view</button>
       )}
       {views.length > 0 && !naming && (
         <select aria-label="Delete a saved view" className="w-6 rounded border border-line bg-transparent py-0.5" value="" onChange={(e) => { if (e.target.value) remove(e.target.value) }}>

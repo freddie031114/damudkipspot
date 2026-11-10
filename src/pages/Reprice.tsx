@@ -18,13 +18,12 @@ export function RepricePage() {
   const list = useMemo(
     () =>
       rows
-        .filter((r) => (view === 'all' || r.item.profileId === view) && r.item.kind !== 'bulk' && r.qty > 0 && (!onlyStale || r.stalePrice))
+        .filter((r) => r.item.profileId === view && r.item.kind !== 'bulk' && r.qty > 0 && (!onlyStale || r.stalePrice))
         .sort((a, b) => a.item.marketPriceUpdatedAt - b.item.marketPriceUpdatedAt)
         .slice(0, 300),
     [rows, view, onlyStale],
   )
 
-  const readOnly = view === 'all'
 
   function commit(i: number, value: string) {
     const r = list[i]
@@ -36,13 +35,12 @@ export function RepricePage() {
   }
 
   return (
-    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">Reprice</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Reprice</h1>
         <span className="text-sm opacity-70">Oldest prices first. Type the new market price and press Enter to save and move to the next. Leave a row blank to skip it.</span>
         <label className="ml-auto flex items-center gap-1 text-sm"><input type="checkbox" checked={onlyStale} onChange={(e) => setOnlyStale(e.target.checked)} /> Only stale prices</label>
       </div>
-      {readOnly && <p className="mb-2 rounded bg-chip px-3 py-1 text-sm">Pick one person's stock (1 or 2) to reprice. Combined is read-only.</p>}
       {list.length === 0 ? <p className="opacity-70">{onlyStale ? 'No stale prices.' : 'No stock to reprice.'}</p> : (
         <table className="w-full text-sm">
           <thead className="text-left text-xs uppercase"><tr><th className="py-1">Item</th><th>Last updated</th><th className="text-right">Market now</th><th className="text-right">Sticker now</th><th className="text-right">New market price</th></tr></thead>
@@ -57,7 +55,7 @@ export function RepricePage() {
                   <td className="text-right">{formatAud(r.sticker)}</td>
                   <td className="text-right">
                     <input ref={(el) => { if (el) inputs.current.set(r.item.id, el); else inputs.current.delete(r.item.id) }} className="w-28 rounded border border-line bg-transparent px-2 py-1 text-right" aria-label={`New price for ${r.item.name} ${r.item.cardNumber}`}
-                      inputMode="decimal" placeholder={(r.item.marketPriceCents / 100).toFixed(2)} disabled={readOnly}
+                      inputMode="decimal" placeholder={(r.item.marketPriceCents / 100).toFixed(2)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const nextId = list[i + 1]?.item.id; commit(i, e.currentTarget.value); e.currentTarget.value = ''; setTimeout(() => { if (nextId) inputs.current.get(nextId)?.focus() }, 0) } }} />
                   </td>
                 </tr>

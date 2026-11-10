@@ -17,9 +17,9 @@ export function TrashPage() {
   }
 
   return (
-    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <div className="mb-3 flex items-center gap-3">
-        <h1 className="text-xl font-semibold">Trash</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Trash</h1>
         <span className="text-sm opacity-70">Deleted items are kept here and can always be restored.</span>
         {picked.size > 0 && <button className={`${btnCls} ml-auto`} onClick={() => restore([...picked])}>Restore {picked.size} selected</button>}
       </div>

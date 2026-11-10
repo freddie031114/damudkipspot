@@ -39,7 +39,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       { id: 'settings', label: 'Go to Settings', run: go('/settings') },
       { id: 'v1', label: `View ${DEFAULT_NAMES.p1}'s stock`, hint: '1', run: () => ui.setView('p1') },
       { id: 'v2', label: `View ${DEFAULT_NAMES.p2}'s stock`, hint: '2', run: () => ui.setView('p2') },
-      { id: 'v3', label: 'View combined stock', hint: '3', run: () => ui.setView('all') },
       { id: 'theme', label: 'Switch light / dark', run: toggleTheme },
       { id: 'keys', label: 'Keyboard shortcuts', hint: '?', run: ui.openKeys },
     ]

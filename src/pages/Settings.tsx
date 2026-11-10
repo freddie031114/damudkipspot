@@ -22,7 +22,7 @@ function ProfileSettings({ p }: { p: ProfileId }) {
   }
   const example = stickerFromMarket(3500, s.multiplierPermille, s.rounding)
   return (
-    <section className="rounded-lg border border-line bg-surface p-4" aria-label={`${DEFAULT_NAMES[p]} settings`}>
+    <section className="rounded-2xl border border-line bg-surface shadow-card p-4" aria-label={`${DEFAULT_NAMES[p]} settings`}>
       <h2 className="mb-3 font-semibold">{DEFAULT_NAMES[p]}'s pricing</h2>
       <div className="grid grid-cols-2 gap-3">
         <label className="text-xs font-medium">Sticker = market ×
@@ -62,14 +62,14 @@ export function SettingsPage() {
     downloadText(`damudkipspot-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ exportedAt: new Date().toISOString(), ...raw }, null, 2), 'application/json')
 
   return (
-    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+    <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
       <h1 className="mb-3 text-xl font-semibold">Settings</h1>
       <div className="mb-6 grid max-w-3xl gap-4 md:grid-cols-2">
         {PROFILE_IDS.map((p) => <ProfileSettings key={p} p={p} />)}
       </div>
       <p className="mb-6 max-w-3xl text-xs opacity-70">Default is market × {(DEFAULT_SETTINGS.multiplierPermille / 1000).toFixed(2)}, rounded to the nearest $1. A manual sticker on an item always wins over these.</p>
 
-      <section className="mb-6 max-w-3xl rounded-lg border border-line bg-surface p-4" aria-label="Backup">
+      <section className="mb-6 max-w-3xl rounded-2xl border border-line bg-surface shadow-card p-4" aria-label="Backup">
         <h2 className="mb-1 font-semibold">Back up your data</h2>
         <p className="mb-3 text-sm opacity-80">Firebase keeps your data, but a copy of your own is a good idea, especially before tax time.</p>
         <div className="flex gap-2">
@@ -79,7 +79,7 @@ export function SettingsPage() {
         <p className="mt-2 text-xs opacity-60">{csvCell(`${raw.items.length} items, ${raw.lots.length} lots, ${raw.sales.length} sales, ${raw.shows.length} shows`)}</p>
       </section>
 
-      <section className="max-w-3xl rounded-lg border border-line bg-surface p-4" aria-label="Appearance">
+      <section className="max-w-3xl rounded-2xl border border-line bg-surface shadow-card p-4" aria-label="Appearance">
         <h2 className="mb-2 font-semibold">Appearance</h2>
         <button className={ghostBtn} onClick={toggleTheme}>Switch light / dark</button>
       </section>

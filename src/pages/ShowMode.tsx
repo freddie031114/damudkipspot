@@ -105,7 +105,7 @@ export function ShowMode() {
 
       <div className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[1fr_26rem]">
         <section className="flex min-h-0 flex-col" aria-label="Find a card">
-          <input ref={searchRef} aria-label="Search stock" className="w-full rounded-lg border-2 border-brand bg-transparent px-4 py-3 text-2xl"
+          <input ref={searchRef} aria-label="Search stock" className="w-full rounded-2xl border-2 border-brand bg-transparent px-4 py-3 text-2xl"
             placeholder="Search name, number, set…  then Enter to add" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onSearchKey} />
           <ul className="mt-2 min-h-0 min-w-0 flex-1 overflow-auto" role="listbox" aria-label="Matches">
             {results.map((r, i) => (
@@ -136,7 +136,7 @@ export function ShowMode() {
           </div>
         </section>
 
-        <aside className="flex min-h-0 flex-col rounded-lg border border-line bg-surface p-3" aria-label="Current sale">
+        <aside className="flex min-h-0 flex-col rounded-2xl border border-line bg-surface shadow-card p-3" aria-label="Current sale">
           <h2 className="mb-2 font-semibold">Current sale</h2>
           <ul className="min-h-0 min-w-0 flex-1 overflow-auto">
             {cart.map((l, i) => (
@@ -163,7 +163,7 @@ export function ShowMode() {
           <div className="mb-2 flex gap-1" role="radiogroup" aria-label="Payment method">
             {METHODS.map((m, i) => (
               <button key={m} role="radio" aria-checked={method === m} onClick={() => { setMethod(m); searchRef.current?.focus() }}
-                className={`flex-1 rounded border px-1 py-1.5 text-sm ${method === m ? 'border-brand bg-brand text-brand-fg' : 'border-line'}`}>{methodLabel[m]}<span className="block text-[10px] opacity-60">Ctrl+{i + 1}</span></button>
+                className={`flex-1 rounded-lg border px-1 py-1.5 text-sm ${method === m ? 'border-brand bg-brand text-brand-fg' : 'border-line'}`}>{methodLabel[m]}<span className="block text-[10px] opacity-60">Ctrl+{i + 1}</span></button>
             ))}
           </div>
           <div className="mb-2 flex items-baseline justify-between"><span>Total</span><strong className="text-3xl" aria-label="Sale total">{formatAud(totals.totalCents)}</strong></div>

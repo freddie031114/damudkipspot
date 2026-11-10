@@ -5,15 +5,14 @@ import { matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
 import { formatAud, parseMoney } from '../domain/money'
-import { DEFAULT_NAMES } from '../lib/profile'
 import { btnCls, ghostBtn } from './common'
 import { SavedViews } from './SavedViews'
 import { useUi } from './UiContext'
 
-export type View = ProfileId | 'all'
+export type View = ProfileId
 type SortKey = 'name' | 'qty' | 'market' | 'sticker' | 'value' | 'location'
 
-const COLS = '28px minmax(160px,2.2fr) minmax(120px,1.3fr) 90px 64px 96px 96px 104px minmax(80px,1fr) 150px'
+const COLS = '28px minmax(170px,2fr) minmax(170px,1.8fr) 96px 56px 96px 96px 104px minmax(80px,1fr) 170px'
 
 function EditableCell({ display, initial, onCommit, disabled, align = 'left', label }: {
   display: ReactNode; initial: string; onCommit: (v: string) => void; disabled?: boolean; align?: 'left' | 'right'; label: string
@@ -59,10 +58,9 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const [moveTo, setMoveTo] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
   const [onlySticker, setOnlySticker] = useState(false)
-  const readOnly = view === 'all'
 
   const visible = useMemo(() => {
-    const list = rows.filter((r) => (view === 'all' || r.item.profileId === view) && matchesSearch(r.item, search) && (!onlySticker || r.needsSticker))
+    const list = rows.filter((r) => r.item.profileId === view && matchesSearch(r.item, search) && (!onlySticker || r.needsSticker))
     const val = (r: InventoryRow): string | number => {
       switch (sort.key) {
         case 'name': return r.item.name.toLowerCase()
@@ -85,7 +83,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
     sticker: visible.reduce((n, r) => n + r.qty * r.sticker, 0),
     known: visible.reduce((n, r) => n + r.knownCostCents, 0),
     unknown: visible.filter((r) => r.costUnknown).length,
-    resticker: rows.filter((r) => (view === 'all' || r.item.profileId === view) && r.needsSticker).length,
+    resticker: rows.filter((r) => r.item.profileId === view && r.needsSticker).length,
   }), [visible])
 
   const parentRef = useRef<HTMLDivElement>(null)
@@ -113,21 +111,24 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
   const allSelected = visible.length > 0 && visible.every((r) => selected.has(r.item.id))
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto">
-     <div className="flex min-h-0 min-w-[1000px] flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-1.5 text-sm" aria-label="Totals">
-        <span><strong>{visible.length}</strong> items</span>
-        <span><strong>{totals.units}</strong> units</span>
-        <span>Market value <strong>{formatAud(totals.value)}</strong></span>
-        <span>Sticker value <strong>{formatAud(totals.sticker)}</strong></span>
-        <span className="opacity-70">Known cost {formatAud(totals.known)}{totals.unknown > 0 && ` (${totals.unknown} items with no cost recorded)`}</span>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto p-4 md:p-6">
+     <div className="flex min-h-0 min-w-[960px] flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+      <div className="flex flex-wrap items-center gap-x-7 gap-y-2 border-b border-line px-5 py-3 text-sm" aria-label="Totals">
+        {([
+          [String(visible.length), 'items'],
+          [String(totals.units), 'units'],
+          [formatAud(totals.value), 'Market value'],
+          [formatAud(totals.sticker), 'Sticker value'],
+        ] as const).map(([v, l]) => (
+          <span key={l} className="flex flex-col leading-tight"><strong className="text-lg font-semibold">{v}</strong><span className="text-[11px] uppercase tracking-wider opacity-60">{l}</span></span>
+        ))}
+        <span className="flex flex-col leading-tight opacity-80"><strong className="text-lg font-semibold">{formatAud(totals.known)}</strong><span className="text-[11px] uppercase tracking-wider opacity-60">Known cost{totals.unknown > 0 && ` · ${totals.unknown} without`}</span></span>
         {(totals.resticker > 0 || onlySticker) && (
           <label className="flex items-center gap-1 text-accent-ink"><input type="checkbox" checked={onlySticker} onChange={(e) => setOnlySticker(e.target.checked)} /> Needs re-sticker ({totals.resticker})</label>
         )}
         <SavedViews current={{ view, search, sortKey: sort.key, sortDir: sort.dir, onlySticker }}
           onApply={(v) => { setView(v.view); setSearch(v.search); setSort({ key: v.sortKey as SortKey, dir: v.sortDir }); setOnlySticker(v.onlySticker) }} />
-        {readOnly && <span className="ml-auto rounded bg-chip px-2 py-0.5">Combined view is read-only</span>}
-        {!readOnly && selected.size > 0 && (
+        {selected.size > 0 && (
           <span className="ml-auto flex items-center gap-2">
             {selected.size} selected
             <button className={ghostBtn} onClick={() => {
@@ -150,8 +151,8 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
         )}
       </div>
 
-      <div className="grid items-center gap-2 border-b border-line px-4 py-1.5 text-xs uppercase tracking-wide" style={{ gridTemplateColumns: COLS }}>
-        <input type="checkbox" aria-label="Select all" checked={allSelected} disabled={readOnly}
+      <div className="grid items-center gap-2 border-b border-line bg-hover/50 px-5 py-2 text-[11px] font-medium uppercase tracking-wider text-ink/65" style={{ gridTemplateColumns: COLS }}>
+        <input type="checkbox" aria-label="Select all" checked={allSelected}
           onChange={() => setSelected(allSelected ? new Set() : new Set(visible.map((r) => r.item.id)))} />
         {header('name', 'Name')}<span className="px-1">Set / #</span><span className="px-1">Lang · Cond</span>
         {header('qty', 'Qty', true)}{header('market', 'Market', true)}{header('sticker', 'Sticker', true)}{header('value', 'Value', true)}
@@ -167,32 +168,32 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
             const it = r.item
             const flags = [r.oversold > 0 && `Oversold ${r.oversold}`, r.lowStock && 'Low', r.needsSticker && 'Re-sticker', r.stalePrice && 'Stale', r.costUnknown && 'No cost'].filter(Boolean) as string[]
             return (
-              <div key={it.id} role="row" className="group absolute left-0 grid w-full items-center gap-2 border-b border-line px-4 text-sm hover:bg-hover"
+              <div key={it.id} role="row" className="group absolute left-0 grid w-full items-center gap-2 border-b border-line/60 px-5 text-sm transition-colors hover:bg-hover/70"
                 style={{ gridTemplateColumns: COLS, height: v.size, transform: `translateY(${v.start}px)` }}>
-                <input type="checkbox" aria-label={`Select ${it.name}`} disabled={readOnly} checked={selected.has(it.id)}
+                <input type="checkbox" aria-label={`Select ${it.name}`} checked={selected.has(it.id)}
                   onChange={() => { const s = new Set(selected); if (s.has(it.id)) s.delete(it.id); else s.add(it.id); setSelected(s) }} />
-                <EditableCell label={`name of ${it.name}`} disabled={readOnly} initial={it.name}
-                  display={<>{view === 'all' && <span className="mr-1 rounded bg-chip px-1 text-xs">{DEFAULT_NAMES[it.profileId]}</span>}{it.name}</>}
+                <EditableCell label={`name of ${it.name}`} initial={it.name}
+                  display={it.name}
                   onCommit={(v) => run(() => updateItem(ctx(), it, { name: v.trim() }))} />
                 <div className="truncate px-1 opacity-80">{[it.setName, it.cardNumber, it.variant].filter(Boolean).join(' · ')}</div>
                 <div className="truncate px-1 opacity-80">{[it.language, it.condition || it.grade && `${it.gradingCompany} ${it.grade}`].filter(Boolean).join(' · ')}</div>
-                <EditableCell label={`quantity of ${it.name}`} align="right" disabled={readOnly} initial={String(r.qty)} display={r.qty}
+                <EditableCell label={`quantity of ${it.name}`} align="right" initial={String(r.qty)} display={r.qty}
                   onCommit={(v) => {
                     const target = Number(v)
                     if (!Number.isInteger(target) || target < 0) return notify('Quantity must be a whole number, zero or more', true)
                     const delta = target - r.qty
                     if (delta !== 0) apply(adjustStock(ctx(), it, delta, delta > 0 ? 'found' : 'count correction', 'inline edit'))
                   }} />
-                <EditableCell label={`market price of ${it.name}`} align="right" disabled={readOnly} initial={(it.marketPriceCents / 100).toFixed(2)} display={formatAud(it.marketPriceCents)}
+                <EditableCell label={`market price of ${it.name}`} align="right" initial={(it.marketPriceCents / 100).toFixed(2)} display={formatAud(it.marketPriceCents)}
                   onCommit={(v) => { const m = money(v); if (m === null || m === 'bad') return notify('Enter a valid market price', true); run(() => updateItem(ctx(), it, { marketPriceCents: m })) }} />
-                <EditableCell label={`sticker of ${it.name}`} align="right" disabled={readOnly} initial={it.stickerOverrideCents === null ? '' : (it.stickerOverrideCents / 100).toFixed(2)}
+                <EditableCell label={`sticker of ${it.name}`} align="right" initial={it.stickerOverrideCents === null ? '' : (it.stickerOverrideCents / 100).toFixed(2)}
                   display={<span title={it.stickerOverrideCents !== null ? 'Manual sticker override' : 'Market x 1.1'}>{formatAud(r.sticker)}{it.stickerOverrideCents !== null && '*'}</span>}
                   onCommit={(v) => { const m = money(v); if (m === 'bad') return notify('Enter a valid sticker price, or leave blank to use market x 1.1', true); run(() => updateItem(ctx(), it, { stickerOverrideCents: m })) }} />
                 <div className="px-1 text-right">{formatAud(r.marketValueCents)}</div>
-                <EditableCell label={`location of ${it.name}`} disabled={readOnly} initial={it.location} display={it.location || <span className="opacity-40">—</span>}
+                <EditableCell label={`location of ${it.name}`} initial={it.location} display={it.location || <span className="opacity-40">—</span>}
                   onCommit={(v) => run(() => updateItem(ctx(), it, { location: v.trim() }))} />
                 <div className="flex items-center gap-1 truncate text-xs">
-                  {flags.map((f) => <span key={f} className="rounded bg-accent/20 px-1 text-accent-ink">{f}</span>)}
+                  {flags.map((f) => <span key={f} className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent-ink">{f}</span>)}
                   <button className="ml-auto rounded px-1.5 text-xs underline opacity-0 group-hover:opacity-100 focus:opacity-100" aria-label={`Open ${it.name}`} onClick={() => openItem(it.id)}>Open</button>
                   <button className={`${btnCls} !px-2 !py-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100`} aria-label={`Sell ${it.name}`} disabled={r.qty < 1} onClick={() => onSell(r)}>Sell</button>
                 </div>
