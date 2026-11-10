@@ -8,15 +8,15 @@ import { toggleTheme } from '../lib/theme'
 import { CheatSheet } from './CheatSheet'
 import { CommandPalette } from './CommandPalette'
 import { btnCls, ghostBtn, isTyping } from './common'
-import { ImportWizard } from './ImportWizard'
 import { Inventory, type View } from './Inventory'
-import { ItemDrawer } from './ItemDrawer'
 import { Wordmark } from './Logo'
 import { QuickAdd } from './QuickAdd'
 import { QuickSell } from './QuickSell'
 import { UiContext, useUi } from './UiContext'
 
 // Pages other than the inventory load on demand, which keeps the first screen fast.
+const ImportWizard = lazy(() => import('./ImportWizard').then((m) => ({ default: m.ImportWizard })))
+const ItemDrawer = lazy(() => import('./ItemDrawer').then((m) => ({ default: m.ItemDrawer })))
 const Dashboard = lazy(() => import('../pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const ShowsPage = lazy(() => import('../pages/Shows').then((m) => ({ default: m.ShowsPage })))
 const ShowDetail = lazy(() => import('../pages/ShowDetail').then((m) => ({ default: m.ShowDetail })))
@@ -200,8 +200,10 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
         {modal?.kind === 'sell' && <QuickSell initial={modal.row} onClose={() => setModal(null)} />}
         {modal?.kind === 'keys' && <CheatSheet onClose={() => setModal(null)} />}
         {modal?.kind === 'palette' && <CommandPalette onClose={() => setModal(null)} />}
-        {modal?.kind === 'import' && <ImportWizard onClose={() => setModal(null)} />}
-        {itemId && <ItemDrawer itemId={itemId} onClose={() => setItemId(null)} />}
+        <Suspense fallback={null}>
+          {modal?.kind === 'import' && <ImportWizard onClose={() => setModal(null)} />}
+          {itemId && <ItemDrawer itemId={itemId} onClose={() => setItemId(null)} />}
+        </Suspense>
         <Toasts />
       </div>
     </UiContext.Provider>
