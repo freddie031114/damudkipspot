@@ -2,7 +2,7 @@
 
 Shared inventory, sales and show tracker for two trading card vendors in Australia. Desktop-first web app used on a laptop at the table and at home. Mainly Pokémon TCG singles and sealed product (including Simplified Chinese), but nothing in the model is Pokémon-specific.
 
-**Status: plan agreed; building in the order under "Build order". Backend switched from Supabase to Firebase (owner's choice).** Update this file when a decision changes.
+**Status: feature-complete first version built and deployed (see Progress). Backend is Firebase (owner's choice). Needs a real sign-in test.** Update this file when a decision changes.
 
 ## Agreed decisions
 
@@ -13,6 +13,7 @@ Shared inventory, sales and show tracker for two trading card vendors in Austral
 | Attribution | Every row and audit entry records the acting profile chosen in the app (not tamper-proof, since the login is shared). Sales also record who sold it and whose stock it was. |
 | Selling each other's stock | Allowed any time (follows from "always editable"). Stock and revenue belong to the item's owner; the sale records the seller. |
 | Combined view | Read-only merged view of both inventories (total stock, total value). Editing happens in a single-profile view. |
+| Names | Profile `p1` is **Freddie** (the owner), `p2` is **Ferrell** (the friend). The site is branded **damudkipspot** with a Mudkip theme. |
 | Pricing | **All prices entered manually, in AUD.** No pokemontcg.io, no FX conversion in v1. |
 | Sticker price | Sticker (asking) price = market price × 1.10. The multiplier is a setting per profile. |
 | Cost basis | **Purchase lots, FIFO.** Each purchase is a lot with its own unit cost and date; sales consume the oldest lot first. |
@@ -187,10 +188,27 @@ Migration approach:
 
 ## Progress
 
-- Done: scaffold; pure domain logic with tests (money, sticker, FIFO, sales); pure change builders with audit entries and undo (tests); Firestore source and in-memory source; app store with undo stack and offline status; login; acting-profile switch; inventory table (virtualised, search, sort, inline edit, soft delete, combined read-only view); quick add with duplicate detection; quick sell with undo; keyboard shortcuts and cheat sheet. Browser-checked in demo mode (`npm run dev`, open `/?demo`, dev builds only).
-- Not yet done: Firestore rules tests (needs the Firebase emulator download), Vercel deploy, item drawer with lots and price-history chart, Trash screen, audit log screen, multi-line sales, import wizard and sheet migration, shows and Show mode, dashboard, reports, saved views, PWA service worker.
-- Firebase project `damudkipspot-a430f` is set up: Firestore (australia-southeast1) created, rules deployed, Google sign-in enabled, Vercel domains authorised. Vercel project has the `VITE_FIREBASE_*` env vars.
-- Not verified against live Firebase yet: a real sign-in, snapshots and writes.
+**Built and tested (all in the repo):**
+- Pure domain logic with tests: money, sticker price and rounding, FIFO stock and cost, sales, carts, show takings, profit and settlement, reports, Australian financial years, safe CSV export.
+- Write builders (change + audit entry + undo): items, lots, adjustments, sales and voids, shows, expenses, settings, bulk import, combined changes.
+- Firestore layer (persistent offline cache, atomic batches) and an in-memory twin used for demos and UI tests.
+- Screens: Inventory (virtual table, inline edit, saved views, bulk delete/move/mark stickered, Combined read-only view), item drawer (details, lots with editable cost, price chart, sales, history), quick add, quick sell, Show mode (cart, bundle discount, payment methods, takings, void), Shows and show detail (float, cash count, shared costs, profit, settlement), Dashboard, Sales log and profit per card with CSV export, Reprice, Trash, Audit log, Settings and backups, Import wizard, command palette (`Ctrl+K`), shortcut sheet.
+- Spreadsheet import: parses the two-block Google Sheet, cross-checks against its printed totals, imports as opening stock with unknown cost, one-click undo. Generic CSV import with column mapping and a price multiplier (Collectr-style headers are guessed; the real Collectr export has not been checked).
+- Offline: service worker precaches the app (tested: reload and deep links open with no connection). Updates wait for a click so a sale is never interrupted.
+- Theme: Mudkip palette, light and dark.
+- Tests: 140+ unit tests (`npm test`), 15 Firestore rules tests against the emulator (`npm run test:rules`, needs Java), CI workflow runs both.
+- Firebase project `damudkipspot-a430f`: Firestore (australia-southeast1) created, rules deployed, Google sign-in enabled, Vercel domains authorised. Vercel project has the `VITE_FIREBASE_*` variables and deploys on every push.
+
+**Findings from the real sheet (worth remembering):**
+- The sheet's printed "Total" figures add up the **sticker** column, not market. The left cards total is $1 off from its own rows (rounding).
+- The left block's slab total ($15,470) is **$240 lower** than its 15 slabs ($15,710). The import uses the individual prices.
+- Imported market values will therefore read about 9% below the sheet's totals.
+
+**Not done / not verified:**
+- **Not tested against live Firebase:** real Google sign-in, live snapshots and writes. The first real login is the first real test.
+- The friend's own Google email is not on the approved list yet (only `damudkipspot@gmail.com` and `freddiechang918@gmail.com`).
+- Photos (Firebase Storage needs the paid plan on new projects), split payments, trade-in handling (a trade is a payment method only), saved views are per laptop (not shared), automatic price providers, scheduled backups.
+- Collectr preset unverified against a real export.
 
 ## Build order
 
@@ -225,10 +243,16 @@ Each phase ends with passing tests and a working app.
 
 ## Needed from the owner
 
-- Firebase project values: `projectId`, `authDomain`, `appId` (and `storageBucket` / `messagingSenderId` if shown), plus the web API key, set as `VITE_FIREBASE_*` environment variables locally and in Vercel. Web API keys identify the project and are not secrets, but keep them in env vars, not in git.
-- In Firebase: enable Authentication (email/password), create the `damudkipspot@gmail.com` account, disable new sign-ups, create a Firestore database in `australia-southeast1` or `australia-southeast2`, and deploy `firestore.rules`.
-- Vercel: connect the GitHub repo, framework preset Vite, add the `VITE_FIREBASE_*` variables.
-- A real Collectr CSV export when the import phase starts (optional; the sheet comes first).
+- Add the friend's Google email to `approvedEmails()` in `firestore.rules` if they will sign in with their own account, then deploy the rules (Firebase console, or ask Claude).
+- Sign in once on the live site and confirm stock loads, then import the spreadsheet (Import button, File > Download > CSV from Google Sheets).
+- A real Collectr CSV export when needed, to check the generic import mapping.
+- Revoke any access tokens that were shared in chat (Vercel token) and change the Google password that was pasted.
+
+## Commands
+
+- `npm run dev` then open `/?demo` for a sample-data copy with no Firebase (dev builds only); `/?demo=empty` starts empty.
+- `npm test` unit tests, `npm run typecheck`, `npm run build`, `npm run test:rules` (Firestore emulator, needs Java).
+- Rules deploy: Firebase console, or the Rules REST API with an access token.
 
 ## Conventions
 

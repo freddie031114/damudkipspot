@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { adjustStock, deleteItems, markStickered, updateItem } from '../data/changes'
+import { adjustStock, combineChanges, deleteItems, markStickered, updateItem } from '../data/changes'
 import { matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
 import { formatAud, parseMoney } from '../domain/money'
 import { DEFAULT_NAMES } from '../lib/profile'
 import { btnCls, ghostBtn } from './common'
+import { SavedViews } from './SavedViews'
 import { useUi } from './UiContext'
 
 export type View = ProfileId | 'all'
@@ -54,7 +55,8 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
 }) {
   const { rows, apply, notify, ready } = useStore()
   const ctx = useChangeCtx()
-  const { openItem } = useUi()
+  const { openItem, openImport, setView, setSearch } = useUi()
+  const [moveTo, setMoveTo] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
   const [onlySticker, setOnlySticker] = useState(false)
   const readOnly = view === 'all'
@@ -122,6 +124,8 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
         {(totals.resticker > 0 || onlySticker) && (
           <label className="flex items-center gap-1 text-accent-ink"><input type="checkbox" checked={onlySticker} onChange={(e) => setOnlySticker(e.target.checked)} /> Needs re-sticker ({totals.resticker})</label>
         )}
+        <SavedViews current={{ view, search, sortKey: sort.key, sortDir: sort.dir, onlySticker }}
+          onApply={(v) => { setView(v.view); setSearch(v.search); setSort({ key: v.sortKey as SortKey, dir: v.sortDir }); setOnlySticker(v.onlySticker) }} />
         {readOnly && <span className="ml-auto rounded bg-chip px-2 py-0.5">Combined view is read-only</span>}
         {!readOnly && selected.size > 0 && (
           <span className="ml-auto flex items-center gap-2">
@@ -134,6 +138,14 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
               const chosen = rows.filter((r) => selected.has(r.item.id))
               apply(markStickered(ctx(), chosen)); setSelected(new Set())
             }}>Mark stickered</button>
+            <input className="w-36 rounded border border-line bg-transparent px-1 py-0.5" aria-label="Move selected to location" placeholder="Move to location ↵" value={moveTo}
+              onChange={(e) => setMoveTo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || !moveTo.trim()) return
+                const chosen = rows.filter((r) => selected.has(r.item.id))
+                apply(combineChanges(`Moved ${chosen.length} item(s) to ${moveTo.trim()}`, chosen.map((r) => updateItem(ctx(), r.item, { location: moveTo.trim() }))))
+                setMoveTo(''); setSelected(new Set())
+              }} />
           </span>
         )}
       </div>
@@ -148,7 +160,7 @@ export function Inventory({ view, search, onSell, selected, setSelected }: {
 
       <div ref={parentRef} className="min-h-0 flex-1 overflow-auto" data-testid="inventory-scroll">
         {!ready && <p className="p-4">Loading stock…</p>}
-        {ready && visible.length === 0 && <p className="p-4 opacity-70">{search ? 'No items match your search.' : 'No stock yet. Press N to add some.'}</p>}
+        {ready && visible.length === 0 && <p className="p-4 opacity-70">{search ? 'No items match your search.' : <>No stock yet. Press <kbd>N</kbd> to add some, or <button className="underline" onClick={openImport}>import your spreadsheet</button>.</>}</p>}
         <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
           {virt.getVirtualItems().map((v) => {
             const r = visible[v.index]!
