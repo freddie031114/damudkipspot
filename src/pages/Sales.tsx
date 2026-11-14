@@ -65,7 +65,7 @@ export function SalesPage() {
   const itemName = (id: string) => names.get(id) ?? 'Unknown card'
   const deals = useMemo(() => raw.sales.filter((d) => {
     if (d.voidedAt && !voided) return false
-    if (owner !== 'all' && !d.lines.some((l) => l.ownerProfileId === owner) && !(d.tradeIns ?? []).some((t) => t.ownerProfileId === owner)) return false
+    if (owner !== 'all' && !d.lines.some((l) => l.ownerProfileId === owner) && !(d.tradeIns ?? []).some((t) => t.ownerProfileId === owner) && d.looseOut?.ownerProfileId !== owner) return false
     if (seller !== 'all' && d.soldByProfileId !== seller) return false
     if (showId !== 'all' && (showId === 'none' ? d.showId !== null : d.showId !== showId)) return false
     if (window_.from !== undefined && d.soldAt < window_.from) return false
@@ -115,7 +115,7 @@ export function SalesPage() {
       ['When', 'Type', 'Show', 'Logged by', 'Cards out', 'Cards in', 'Cash in/out (AUD)', 'Paid by', 'Cards in valued at (AUD)', 'Counted as sold for (AUD)', 'Profit (AUD)', 'Voided'],
       ...deals.map(({ sale: d, sum }) => [
         fmtDateTime(d.soldAt), sum.kind, raw.shows.find((x) => x.id === d.showId)?.name ?? '', nameOf(d.soldByProfileId),
-        d.lines.map((l) => `${l.qty} x ${itemName(l.itemId)}`).join('; '), (d.tradeIns ?? []).map((t) => `${t.qty} x ${itemName(t.itemId)}`).join('; '),
+        [...d.lines.map((l) => `${l.qty} x ${itemName(l.itemId)}`), ...(d.looseOut ? [`cards worth ${(d.looseOut.valueCents / 100).toFixed(2)}`] : [])].join('; '), (d.tradeIns ?? []).map((t) => `${t.qty} x ${itemName(t.itemId)}`).join('; '),
         (sum.cashCents / 100).toFixed(2), [...new Set(d.payments.filter((x) => x.method !== 'trade').map((x) => methodLabel[x.method]))].join('+'),
         (sum.tradeValueCents / 100).toFixed(2), (sum.revenueCents / 100).toFixed(2), sum.profitCents === null ? '' : (sum.profitCents / 100).toFixed(2), d.voidedAt ? 'Yes' : 'No',
       ]),

@@ -90,8 +90,8 @@ export function ShowMode() {
       )}
 
       <main className="min-h-0 flex-1 overflow-y-auto p-4 max-md:p-3">
-        <div className="mx-auto max-w-6xl">
-          <DealForm showId={show.id} wide stickySubmit side={recent} />
+        <div className="mx-auto max-w-5xl">
+          <DealForm showId={show.id} defaultMode="trade" wide stickySubmit side={recent} />
         </div>
       </main>
     </div>

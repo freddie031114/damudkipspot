@@ -129,3 +129,22 @@ export function saleLineCosts(d: InventoryData): (saleId: string, lineIndex: num
   const { costByDemand } = allocateFifo(supplies, demands)
   return (saleId, i) => costByDemand.get(`${saleId}:${i}`) ?? { knownCostCents: 0, unknownCostQty: 0, oversoldQty: 0 }
 }
+
+/**
+ * Value of cards that went out by total only, per person. It comes off that person's bulk cards, so
+ * the bulk figure stays honest without anyone editing it by hand. Voided deals are ignored.
+ */
+export function looseOutByProfile(sales: Pick<Sale, 'looseOut' | 'voidedAt'>[]): Record<ProfileId, number> {
+  const out: Record<ProfileId, number> = { p1: 0, p2: 0 }
+  for (const s of sales) if (!s.voidedAt && s.looseOut) out[s.looseOut.ownerProfileId] += s.looseOut.valueCents
+  return out
+}
+
+/** Bulk cards value for a profile, or both: what is recorded minus what went out by value. */
+export function bulkValueCents(rows: InventoryRow[], loose: Record<ProfileId, number>, profile: ProfileId | 'all'): number {
+  return Math.max(0, bulkRecordedCents(rows, profile) - (profile === 'all' ? loose.p1 + loose.p2 : loose[profile]))
+}
+
+export function bulkRecordedCents(rows: InventoryRow[], profile: ProfileId | 'all'): number {
+  return rows.filter((r) => r.item.kind === 'bulk' && (profile === 'all' || r.item.profileId === profile)).reduce((n, r) => n + r.marketValueCents, 0)
+}

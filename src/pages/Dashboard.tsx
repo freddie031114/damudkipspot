@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { saleLineCosts } from '../data/derive'
+import { bulkValueCents, looseOutByProfile, saleLineCosts } from '../data/derive'
 import { useStore } from '../data/store'
 import { formatAud } from '../domain/money'
 import { buildSalesLog, filterLog, totalsOf } from '../domain/report'
@@ -24,7 +24,7 @@ export function Dashboard() {
   const { view, openItem } = useUi()
   const mine = useMemo(() => rows.filter((r) => view === 'all' || r.item.profileId === view), [rows, view])
   const scoped = useMemo(() => mine.filter((r) => r.item.kind !== 'bulk'), [mine])
-  const bulkCents = useMemo(() => mine.filter((r) => r.item.kind === 'bulk').reduce((n, r) => n + r.marketValueCents, 0), [mine])
+  const bulkCents = useMemo(() => bulkValueCents(rows, looseOutByProfile(raw.sales), view), [rows, raw.sales, view])
 
   const stats = useMemo(() => {
     const priced = scoped.filter((r) => r.qty > 0)

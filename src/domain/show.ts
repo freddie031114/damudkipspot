@@ -1,4 +1,4 @@
-import type { PaymentMethod, ProfileId, SaleLine, SalePayment, SaleTradeIn } from './sale'
+import type { LooseOut, PaymentMethod, ProfileId, SaleLine, SalePayment, SaleTradeIn } from './sale'
 
 /** Splits `total` across `weights` so the parts add up exactly (largest remainder). */
 export function allocate(total: number, weights: number[]): number[] {
@@ -20,6 +20,8 @@ export interface SummarySale {
   payments: SalePayment[]
   /** Cards received in trade; they count as stock for whoever's stock they joined. */
   tradeIns?: SaleTradeIn[]
+  /** Cards that went out by value only; shares the sale's revenue like a line and is carried at its value. */
+  looseOut?: LooseOut
   voidedAt: number | null
 }
 
@@ -106,8 +108,19 @@ export function summarizeShow(input: {
       if (p.method !== 'trade') { if (p.amountCents >= 0) moneyInCents += p.amountCents; else moneyOutCents -= p.amountCents }
     }
 
-    const lineRev = allocate(total, lineTotals)
+    // Cards out by value share the revenue with any matched cards, by value.
+    const looseValue = s.looseOut?.valueCents ?? 0
+    const allRev = allocate(total, looseValue > 0 ? [...lineTotals, looseValue] : lineTotals)
+    const lineRev = allRev
     const ownerRev: Record<ProfileId, number> = { p1: 0, p2: 0 }
+    if (s.looseOut && looseValue > 0) {
+      const rev = allRev[allRev.length - 1]!
+      const owner = per[s.looseOut.ownerProfileId]
+      owner.revenueCents += rev
+      ownerRev[s.looseOut.ownerProfileId] += rev
+      owner.knownCostCents += looseValue
+      owner.profitCents += rev - looseValue
+    }
     s.lines.forEach((l, i) => {
       const owner = per[l.ownerProfileId]
       const rev = lineRev[i]!

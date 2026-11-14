@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { adjustStock, createItem, deleteItems, markStickered, updateItem } from '../data/changes'
-import { matchesSearch, type InventoryRow } from '../data/derive'
+import { bulkValueCents, looseOutByProfile, matchesSearch, type InventoryRow } from '../data/derive'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
 import { slabLabel } from '../domain/grade'
@@ -55,10 +55,13 @@ function EditableCell({ display, initial, onCommit, disabled, align = 'left', la
 
 /** Bulk cards are just a lump-sum value per person, kept out of the card list. */
 export function BulkChip({ profile, short }: { profile: View; short?: boolean }) {
-  const { rows, apply, notify } = useStore()
+  const { rows, raw, apply, notify } = useStore()
   const ctx = useChangeCtx()
   const bulk = rows.filter((r) => r.item.kind === 'bulk' && (profile === 'all' || r.item.profileId === profile))
-  const cents = bulk.reduce((n, r) => n + r.marketValueCents, 0)
+  // Cards that went out by total (logged as a deal) come off the bulk figure automatically.
+  const loose = looseOutByProfile(raw.sales)
+  const taken = profile === 'all' ? loose.p1 + loose.p2 : loose[profile]
+  const cents = bulkValueCents(rows, loose, profile)
   const first = bulk[0]
 
   function save(v: string) {
@@ -66,9 +69,11 @@ export function BulkChip({ profile, short }: { profile: View; short?: boolean })
     const c = parseMoney(v)
     if (c === null || c < 0) return notify('Enter a valid amount', true)
     if (c === cents) return
+    // What is recorded is what you see plus what has gone out by total, so the figure shown is exactly what was typed.
+    const recorded = c + taken
     try {
-      if (first && first.qty > 0) apply(updateItem(ctx(), first.item, { marketPriceCents: Math.round(c / first.qty) }))
-      else apply(createItem(ctx(), { profileId: profile, name: 'Bulk cards', kind: 'bulk', marketPriceCents: c }, { qty: 1, unitCostCents: null, source: 'opening' }))
+      if (first && first.qty > 0) apply(updateItem(ctx(), first.item, { marketPriceCents: Math.round(recorded / first.qty) }))
+      else apply(createItem(ctx(), { profileId: profile, name: 'Bulk cards', kind: 'bulk', marketPriceCents: recorded }, { qty: 1, unitCostCents: null, source: 'opening' }))
     } catch (e) {
       notify((e as Error).message, true)
     }

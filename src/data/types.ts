@@ -1,4 +1,4 @@
-import type { PaymentMethod, ProfileId, SaleLine, SalePayment, SaleTradeIn } from '../domain/sale'
+import type { LooseOut, PaymentMethod, ProfileId, SaleLine, SalePayment, SaleTradeIn } from '../domain/sale'
 
 export type { ProfileId }
 export type ItemKind = 'single' | 'sealed' | 'graded' | 'bulk' | 'other'
@@ -63,6 +63,8 @@ export interface Sale extends Base {
   payments: SalePayment[]
   /** Cards received from the customer in this sale; each created a stock lot costed at the credit given. */
   tradeIns?: SaleTradeIn[]
+  /** Cards that went out by value only, not matched to stock. Taken from that person's bulk cards. */
+  looseOut?: LooseOut
   voidedAt: number | null
   voidedBy: ProfileId | null
 }

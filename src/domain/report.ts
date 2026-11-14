@@ -1,4 +1,4 @@
-import type { PaymentMethod, ProfileId, SaleLine, SalePayment } from './sale'
+import type { LooseOut, PaymentMethod, ProfileId, SaleLine, SalePayment } from './sale'
 import { allocate, type LineCost } from './show'
 
 export interface ReportSale {
@@ -9,6 +9,7 @@ export interface ReportSale {
   discountCents: number
   lines: SaleLine[]
   payments: SalePayment[]
+  looseOut?: LooseOut
   voidedAt: number | null
 }
 
@@ -55,8 +56,19 @@ export function buildSalesLog(input: {
   for (const s of input.sales) {
     const lineTotals = s.lines.map((l) => l.qty * l.unitPriceCents)
     const total = lineTotals.reduce((a, b) => a + b, 0) - s.discountCents
-    const rev = allocate(total, lineTotals)
+    const looseValue = s.looseOut?.valueCents ?? 0
+    const rev = allocate(total, looseValue > 0 ? [...lineTotals, looseValue] : lineTotals)
     const methods = [...new Set(s.payments.map((p) => p.method))]
+    if (s.looseOut && looseValue > 0) {
+      // Cards out by value only show as one row, carried at their value.
+      const r = rev[rev.length - 1]!
+      rows.push({
+        saleId: s.id, soldAt: s.soldAt, showId: s.showId, showName: input.showName(s.showId), soldBy: s.soldByProfileId,
+        owner: s.looseOut.ownerProfileId, itemId: `loose:${s.looseOut.ownerProfileId}`, itemName: 'Loose cards (by value)', setName: '',
+        cardNumber: '', variant: '', qty: 1, stickerCents: looseValue, unitPriceCents: r, revenueCents: r, costCents: looseValue,
+        profitCents: r - looseValue, methods, voided: s.voidedAt !== null,
+      })
+    }
     s.lines.forEach((l, i) => {
       const it = items.get(l.itemId)
       const c = input.costOf(s.id, i)

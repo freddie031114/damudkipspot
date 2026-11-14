@@ -63,12 +63,22 @@ export interface SaleTradeIn {
   createdItem: boolean
 }
 
+/**
+ * Cards that went out without being matched to specific stock: just a value, taken from that
+ * person's bulk cards. Used when a deal is logged quickly with totals instead of individual cards.
+ */
+export interface LooseOut {
+  ownerProfileId: ProfileId
+  valueCents: number
+}
+
 export interface SaleDraft {
   soldByProfileId: ProfileId
   lines: SaleLine[]
   payments: SalePayment[]
   discountCents: number
   tradeIns?: TradeInInput[]
+  looseOut?: LooseOut
 }
 
 /** Total credit given for the cards received. */
@@ -111,7 +121,11 @@ export function validateSale(sale: SaleDraft, validProfileIds: readonly string[]
   const errors: string[] = []
   if (!validProfileIds.includes(sale.soldByProfileId)) errors.push('Unknown seller')
   // A deal can be a straight buy: cards in, nothing out.
-  if (sale.lines.length === 0 && (sale.tradeIns ?? []).length === 0) errors.push('Add at least one item')
+  if (sale.lines.length === 0 && (sale.tradeIns ?? []).length === 0 && !sale.looseOut) errors.push('Add at least one item')
+  if (sale.looseOut) {
+    if (!isInt(sale.looseOut.valueCents) || sale.looseOut.valueCents <= 0) errors.push('The value of the cards going out must be more than zero')
+    if (!validProfileIds.includes(sale.looseOut.ownerProfileId)) errors.push('Unknown owner for the cards going out')
+  }
   sale.lines.forEach((l, i) => {
     const n = i + 1
     if (!isInt(l.qty) || l.qty < 1) errors.push(`Line ${n}: quantity must be a whole number of at least 1`)
@@ -142,7 +156,7 @@ export function validateSale(sale: SaleDraft, validProfileIds: readonly string[]
   }
   const t = saleTotals(sale)
   if (t.totalCents < 0) errors.push('Discount is larger than the sale')
-  if ((sale.lines.length > 0 || trades.length > 0) && t.paidCents !== t.totalCents) {
+  if ((sale.lines.length > 0 || trades.length > 0 || sale.looseOut) && t.paidCents !== t.totalCents) {
     errors.push('Payments must add up to the sale total')
   }
   return errors

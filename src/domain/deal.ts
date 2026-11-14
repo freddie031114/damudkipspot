@@ -1,4 +1,4 @@
-import type { PaymentMethod, ProfileId, SaleDraft, SaleLine, SalePayment, SaleTradeIn, TradeInInput } from './sale'
+import type { LooseOut, PaymentMethod, ProfileId, SaleDraft, SaleLine, SalePayment, SaleTradeIn, TradeInInput } from './sale'
 import { allocate, type LineCost } from './show'
 
 /**
@@ -124,6 +124,7 @@ export interface DealSale {
   lines: SaleLine[]
   payments: SalePayment[]
   tradeIns?: SaleTradeIn[]
+  looseOut?: LooseOut
   voidedAt: number | null
 }
 
@@ -147,7 +148,9 @@ export function summarizeDeal(s: DealSale, costOf: (saleId: string, lineIndex: n
   const cashCents = s.payments.filter((p) => p.method !== 'trade').reduce((n, p) => n + p.amountCents, 0)
   const tradeValueCents = s.payments.filter((p) => p.method === 'trade').reduce((n, p) => n + p.amountCents, 0)
   const revenueCents = s.lines.reduce((n, l) => n + l.qty * l.unitPriceCents, 0) - s.discountCents
-  let cost = 0
+  const hasOut = outUnits > 0 || !!s.looseOut
+  // Cards that went out by value only are carried at that value, so their cost is known.
+  let cost = s.looseOut?.valueCents ?? 0
   let known = true
   s.lines.forEach((_, i) => {
     const c = costOf(s.id, i)
@@ -155,13 +158,119 @@ export function summarizeDeal(s: DealSale, costOf: (saleId: string, lineIndex: n
     cost += c.knownCostCents
   })
   return {
-    kind: outUnits === 0 ? 'buy' : inUnits > 0 || tradeValueCents > 0 ? 'trade' : 'sale',
+    kind: !hasOut ? 'buy' : inUnits > 0 || tradeValueCents > 0 ? 'trade' : 'sale',
     outUnits, inUnits, cashCents, tradeValueCents, revenueCents,
-    profitCents: outUnits === 0 ? null : known ? revenueCents - cost : null,
+    profitCents: !hasOut ? null : known ? revenueCents - cost : null,
   }
 }
 
 /** "+$20.00 cash", "−$30.00 cash" or "Even swap", for lists. */
 export function cashLabel(cashCents: number, fmt: (c: number) => string): string {
   return cashCents === 0 ? 'No cash' : cashCents > 0 ? `+${fmt(cashCents)}` : `−${fmt(-cashCents)}`
+}
+
+// ---------- quick deals: totals only ----------
+
+export type QuickField = 'out' | 'in' | 'cash'
+
+/**
+ * A quick deal is three totals that always satisfy: value of cards out = value of cards in + cash.
+ * (Cash is positive when they paid us, negative when we paid them.) The person types any two and
+ * the third is worked out; cards-in or cards-out can be zero for a plain sale or a straight buy.
+ */
+export interface QuickTotals {
+  outCents: number
+  inCents: number
+  cashCents: number
+}
+
+/**
+ * Fills in the field that was not typed. `entered` holds the fields that were typed, most
+ * recent last, as cents (null when left empty). Only the last two typed fields count, so typing a
+ * third one drops the oldest and the dropped one becomes the calculated field.
+ */
+export function typedFields(entered: Partial<Record<QuickField, number | null>>, order: QuickField[]): QuickField[] {
+  return order.filter((f, i) => order.lastIndexOf(f) === i && entered[f] != null).slice(-2)
+}
+
+export function solveQuick(entered: Partial<Record<QuickField, number | null>>, order: QuickField[]): QuickTotals & { calculated: QuickField | null } {
+  const typed = typedFields(entered, order)
+  const v = (f: QuickField) => (typed.includes(f) ? (entered[f] as number) : null)
+  const [o, i, c] = [v('out'), v('in'), v('cash')]
+  if (o !== null && i !== null) return { outCents: o, inCents: i, cashCents: o - i, calculated: 'cash' }
+  if (o !== null && c !== null) return { outCents: o, inCents: Math.max(0, o - c), cashCents: c, calculated: 'in' }
+  if (i !== null && c !== null) return { outCents: Math.max(0, i + c), inCents: i, cashCents: c, calculated: 'out' }
+  if (o !== null) return { outCents: o, inCents: 0, cashCents: o, calculated: 'cash' }
+  if (i !== null) return { outCents: 0, inCents: i, cashCents: -i, calculated: 'cash' }
+  if (c !== null) return c >= 0 ? { outCents: c, inCents: 0, cashCents: c, calculated: 'out' } : { outCents: 0, inCents: -c, cashCents: c, calculated: 'in' }
+  return { outCents: 0, inCents: 0, cashCents: 0, calculated: null }
+}
+
+export interface QuickDealInput {
+  by: ProfileId
+  /** Specific cards taken out of stock, when they were picked. Their sticker prices only share the deal's value between them. */
+  picks: DealOut[]
+  totals: QuickTotals
+  method: PaymentMethod
+  /** Whose stock the cards going out came from (when not picked) and the cards coming in go to. */
+  stockOf: ProfileId
+  /** The lot that came in: a name, how many cards (for the stock count) and nothing else. */
+  lot: { label: string; count: number }
+  game?: string
+}
+
+/** What a quick deal means for the books, or the reason it cannot be saved. */
+export function quickNumbers(t: QuickTotals, hasPicks: boolean): { hasOut: boolean; hasIn: boolean; revenueCents: number; tradeValueCents: number } {
+  if (!Number.isInteger(t.outCents) || !Number.isInteger(t.inCents) || !Number.isInteger(t.cashCents)) throw new Error('Enter valid amounts')
+  const hasOut = t.outCents > 0 || hasPicks
+  const hasIn = t.inCents > 0 || (!hasOut && t.cashCents < 0)
+  if (!hasOut && t.cashCents > 0) throw new Error('They paid you but nothing went out. Enter the value of the cards you gave')
+  if (!hasOut && !hasIn) throw new Error('Enter what went out, what came in, or the cash')
+  // Cards out count as sold for what came back: the cards in at their value, plus the cash.
+  const revenueCents = hasOut ? t.inCents + t.cashCents : 0
+  if (revenueCents < 0) throw new Error('You paid more cash than the cards in are worth. Check the value of the cards that came in')
+  // A straight buy costs what was paid, whatever the cards might be worth.
+  const tradeValueCents = hasOut ? t.inCents : Math.max(0, -t.cashCents)
+  return { hasOut, hasIn, revenueCents, tradeValueCents }
+}
+
+/** Turns a quick deal into the sale record that is saved. */
+export function quickDealToDraft(d: QuickDealInput): SaleDraft {
+  const hasPicks = d.picks.length > 0
+  for (const o of d.picks) if (!Number.isInteger(o.qty) || o.qty < 1) throw new Error('Quantities must be whole numbers of at least 1')
+  if (!Number.isInteger(d.lot.count) || d.lot.count < 1) throw new Error('How many cards came in must be a whole number of at least 1')
+  const n = quickNumbers(d.totals, hasPicks)
+
+  const stickerTotal = d.picks.reduce((s, o) => s + o.qty * o.stickerPriceCents, 0)
+  const lines: SaleLine[] = d.picks.map((o) => ({ itemId: o.itemId, ownerProfileId: o.ownerProfileId, qty: o.qty, stickerPriceCents: o.stickerPriceCents, unitPriceCents: stickerTotal > 0 ? o.stickerPriceCents : 100 }))
+  const subtotal = lines.reduce((s, l) => s + l.qty * l.unitPriceCents, 0)
+  const loose: LooseOut | undefined = !hasPicks && n.hasOut ? { ownerProfileId: d.stockOf, valueCents: d.totals.outCents } : undefined
+
+  const tradeIns: TradeInInput[] = n.hasIn
+    ? [{
+        itemId: null,
+        ownerProfileId: hasPicks ? d.picks[0]!.ownerProfileId : d.stockOf,
+        qty: d.lot.count,
+        creditCents: Math.floor(n.tradeValueCents / d.lot.count),
+        totalCreditCents: n.tradeValueCents,
+        item: { name: d.lot.label.trim() || 'Trade lot', setName: '', cardNumber: '', variant: '', condition: '', game: d.game ?? 'Pokémon', marketPriceCents: Math.round((d.totals.inCents || n.tradeValueCents) / d.lot.count) },
+      }]
+    : []
+
+  const payments: SalePayment[] = []
+  if (n.tradeValueCents > 0 && n.hasIn) payments.push({ method: 'trade', amountCents: n.tradeValueCents, receivedByProfileId: d.by })
+  if (d.totals.cashCents !== 0) {
+    const method = d.method === 'trade' || (d.totals.cashCents < 0 && d.method === 'card') ? 'cash' : d.method
+    payments.push({ method, amountCents: d.totals.cashCents, receivedByProfileId: d.by })
+  }
+
+  return {
+    soldByProfileId: d.by,
+    lines,
+    payments,
+    // Total of the sale = what the cards out counted as sold for. For a buy that is nothing.
+    discountCents: subtotal - (n.hasOut ? n.revenueCents : 0),
+    ...(tradeIns.length ? { tradeIns } : {}),
+    ...(loose ? { looseOut: loose } : {}),
+  }
 }

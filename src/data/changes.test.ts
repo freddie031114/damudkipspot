@@ -247,3 +247,40 @@ describe('deals', () => {
     expect(pika.item.marketPriceCents).toBe(7000)
   })
 })
+
+describe('quick deals by value', () => {
+  it('cards out by value come off the bulk figure, and voiding puts them back', async () => {
+    const { quickDealToDraft } = await import('../domain/deal')
+    const { looseOutByProfile, bulkValueCents } = await import('./derive')
+    const s = empty()
+    applyOps(s, createItem(ctx(), { profileId: 'p1', name: 'Bulk cards', kind: 'bulk', marketPriceCents: 175000 }, { qty: 1, unitCostCents: null, source: 'opening' }).ops)
+    const rows = () => buildInventory(s, undefined, 9_000)
+    expect(bulkValueCents(rows(), looseOutByProfile(s.sales), 'p1')).toBe(175000)
+
+    const c = recordSale(ctx('p1', 5_000), quickDealToDraft({
+      by: 'p1', picks: [], method: 'cash', stockOf: 'p1', lot: { label: "Dan's binder", count: 30 },
+      totals: { outCents: 10000, inCents: 8000, cashCents: 2000 },
+    }))
+    applyOps(s, c.ops)
+    expect(c.label).toMatch(/^Trade logged, they paid 20.00/)
+    expect(bulkValueCents(rows(), looseOutByProfile(s.sales), 'p1')).toBe(165000)
+    expect(bulkValueCents(rows(), looseOutByProfile(s.sales), 'p2')).toBe(0)
+    // the new lot is a stock row at its cost, 30 cards
+    const lot = rows().find((r) => r.item.name === "Dan's binder")!
+    expect(lot).toMatchObject({ qty: 30, knownCostCents: 8000 })
+
+    applyOps(s, c.inverse!(ctx('p1', 6_000)))
+    expect(bulkValueCents(rows(), looseOutByProfile(s.sales), 'p1')).toBe(175000)
+    expect(rows().find((r) => r.item.name === "Dan's binder")).toBeUndefined()
+  })
+
+  it('a cash-only sale by value saves with no lines and no cards in', async () => {
+    const { quickDealToDraft } = await import('../domain/deal')
+    const s = empty()
+    const c = recordSale(ctx('p1', 5_000), quickDealToDraft({ by: 'p1', picks: [], method: 'payid', stockOf: 'p2', lot: { label: '', count: 1 }, totals: { outCents: 3000, inCents: 0, cashCents: 3000 } }))
+    applyOps(s, c.ops)
+    expect(s.sales[0]).toMatchObject({ lines: [], looseOut: { ownerProfileId: 'p2', valueCents: 3000 } })
+    expect(s.items).toHaveLength(0)
+    expect(c.label).toBe('Sale 30.00')
+  })
+})

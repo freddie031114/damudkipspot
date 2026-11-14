@@ -261,6 +261,7 @@ export function recordSale(ctx: Ctx, draft: SaleDraft, opts: { showId?: string |
     lines: draft.lines,
     payments: draft.payments,
     ...(tradeIns.length ? { tradeIns } : {}),
+    ...(draft.looseOut ? { looseOut: draft.looseOut } : {}),
     voidedAt: null,
     voidedBy: null,
     ...born(ctx),
@@ -271,14 +272,15 @@ export function recordSale(ctx: Ctx, draft: SaleDraft, opts: { showId?: string |
   const unitsIn = tradeIns.reduce((n, t) => n + t.qty, 0)
   return {
     saleId: id,
-    label: draft.lines.length === 0
+    label: draft.lines.length === 0 && !draft.looseOut
       ? `Bought ${unitsIn} card${unitsIn === 1 ? '' : 's'} for ${(-cash / 100).toFixed(2)}`
       : tradeIns.length ? `Trade logged${cash === 0 ? '' : cash > 0 ? `, they paid ${(cash / 100).toFixed(2)}` : `, we paid ${(-cash / 100).toFixed(2)}`}` : `Sale ${(total / 100).toFixed(2)}`,
     ops: [
       { collection: 'sales', id, merge: false, data: sale as unknown as Record<string, unknown> },
       ...tradeOps,
-      audit(ctx, 'sale', id, 'create', owners[0] ?? tradeIns[0]?.ownerProfileId ?? ctx.actor, {
+      audit(ctx, 'sale', id, 'create', owners[0] ?? draft.looseOut?.ownerProfileId ?? tradeIns[0]?.ownerProfileId ?? ctx.actor, {
         totalCents: total, cashCents: cash, lines: draft.lines.length, owners,
+        ...(draft.looseOut ? { looseOutCents: draft.looseOut.valueCents } : {}),
         ...(tradeIns.length ? { tradeIns: tradeIns.length, tradeCreditCents: tradeCreditCents(tradeIns) } : {}),
       }),
     ],
@@ -294,7 +296,7 @@ export function voidSale(ctx: Ctx, sale: Sale): Change | null {
   if (sale.voidedAt) return null
   const trades = sale.tradeIns ?? []
   return {
-    label: sale.lines.length === 0 ? 'Buy voided' : trades.length ? 'Trade voided' : 'Sale voided',
+    label: sale.lines.length === 0 && !sale.looseOut ? 'Buy voided' : trades.length ? 'Trade voided' : 'Sale voided',
     ops: [
       { collection: 'sales', id: sale.id, merge: true, data: { voidedAt: ctx.now, voidedBy: ctx.actor, ...stamp(ctx) } },
       ...trades.flatMap((t) => [

@@ -38,7 +38,10 @@ export function DealCard({ sale, summary, itemName, showName, timeOnly, onVoid }
         </strong>
       </div>
       <div className={`mt-1.5 space-y-0.5 text-sm ${sale.voidedAt ? 'line-through' : ''}`}>
-        {sale.lines.length > 0 && <p><span className="mr-1.5 inline-block w-7 text-xs font-semibold uppercase text-accent-ink">Out</span>{listCards(sale.lines, itemName)}</p>}
+        {(sale.lines.length > 0 || sale.looseOut) && (
+          <p><span className="mr-1.5 inline-block w-7 text-xs font-semibold uppercase text-accent-ink">Out</span>
+            {[listCards(sale.lines, itemName), sale.looseOut ? `cards worth ${formatAud(sale.looseOut.valueCents)}` : ''].filter(Boolean).join(', ')}</p>
+        )}
         {ins.size > 0 && <p><span className="mr-1.5 inline-block w-7 text-xs font-semibold uppercase text-brand">In</span>{listCards([...ins].map(([itemId, qty]) => ({ itemId, qty })), itemName)}</p>}
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
