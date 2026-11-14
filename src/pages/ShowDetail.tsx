@@ -1,13 +1,16 @@
-import { useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useMemo, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { addExpense, deleteExpense, setParticipant, updateShow, voidSale, type ShowEdit } from '../data/changes'
 import { useChangeCtx, useStore } from '../data/store'
 import type { ProfileId } from '../data/types'
 import { formatAud, parseMoney } from '../domain/money'
 import { DEFAULT_NAMES, PROFILE_IDS, useActingProfile } from '../lib/profile'
 import { btnCls, ghostBtn, inputCls } from '../ui/common'
-import { fmtDateTime, methodLabel, nameOf } from '../ui/format'
+import { methodLabel, nameOf } from '../ui/format'
 import { statusStyle } from './Shows'
+import { saleLineCosts } from '../data/derive'
+import { summarizeDeal } from '../domain/deal'
+import { DealCard } from '../ui/DealCard'
 import { useShow } from './showSummary'
 
 const lbl = 'block text-xs font-medium'
@@ -16,7 +19,10 @@ const box = 'rounded-2xl border border-line bg-surface shadow-card p-4'
 export function ShowDetail() {
   const { id } = useParams()
   const data = useShow(id)
-  const { apply, notify } = useStore()
+  const { raw, apply, notify } = useStore()
+  const navigate = useNavigate()
+  const costOf = useMemo(() => saleLineCosts(raw), [raw])
+  const names = useMemo(() => new Map(raw.items.map((i) => [i.id, [i.name, i.cardNumber].filter(Boolean).join(' ')])), [raw])
   const ctx = useChangeCtx()
   const { acting } = useActingProfile()
   const [exp, setExp] = useState({ description: '', amount: '', paidBy: (acting ?? 'p1') as ProfileId, custom: false, pct: '50' })
@@ -50,7 +56,7 @@ export function ShowDetail() {
         <h1 className="text-2xl font-semibold tracking-tight">{show.name}</h1>
         <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusStyle[show.status]}`}>{show.status}</span>
         <span className="ml-auto flex gap-2">
-          {show.status === 'planned' && <button className={btnCls} onClick={() => edit({ status: 'live' })}>Start show</button>}
+          {show.status === 'planned' && <button className={btnCls} onClick={() => { edit({ status: 'live' }); navigate(`/show/${show.id}`) }}>Start show</button>}
           {show.status === 'live' && <Link to={`/show/${show.id}`} className={btnCls}>Open Show mode</Link>}
           {show.status === 'live' && <button className={ghostBtn} onClick={() => edit({ status: 'closed' })}>Close show</button>}
           {show.status === 'closed' && <button className={ghostBtn} onClick={() => edit({ status: 'live' })}>Reopen</button>}
@@ -132,8 +138,15 @@ export function ShowDetail() {
 
         <section className={box} aria-label="Summary">
           <h2 className="mb-2 font-semibold">Show summary</h2>
-          <p className="mb-2 text-sm">{s.salesCount} sales · takings <strong>{formatAud(s.totalCents)}</strong>
-            {' '}({(['cash', 'card', 'payid', 'trade'] as const).filter((m) => s.byMethod[m] > 0).map((m) => `${methodLabel[m]} ${formatAud(s.byMethod[m])}`).join(', ') || 'no payments yet'})</p>
+          <div className="mb-3 grid grid-cols-4 gap-3 rounded-xl bg-hover/60 px-3 py-2" aria-label="Money at this show">
+            {([['Cash in', formatAud(s.moneyInCents)], ['Cash out', formatAud(s.moneyOutCents)], ['Net', formatAud(s.moneyInCents - s.moneyOutCents)], [s.salesCount === 1 ? 'Deal' : 'Deals', String(s.salesCount)]] as const).map(([l, v]) => (
+              <span key={l} className="flex min-w-0 flex-col leading-tight"><strong className="truncate text-lg">{v}</strong><span className="text-[10px] uppercase tracking-wider opacity-60">{l}</span></span>
+            ))}
+          </div>
+          <p className="mb-2 text-xs opacity-70">
+            {(['cash', 'card', 'payid'] as const).filter((m) => s.byMethod[m] !== 0).map((m) => `${methodLabel[m]} ${formatAud(s.byMethod[m])}`).join(' · ') || 'No money has changed hands yet'}
+            {s.byMethod.trade > 0 && ` · cards taken in valued at ${formatAud(s.byMethod.trade)}`}
+          </p>
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase"><tr><th className="py-1" /><th className="text-right">{DEFAULT_NAMES.p1}</th><th className="text-right">{DEFAULT_NAMES.p2}</th></tr></thead>
             <tbody>
@@ -161,25 +174,15 @@ export function ShowDetail() {
           )}
         </section>
 
-        <section className={`${box} xl:col-span-2`} aria-label="Show sales">
-          <h2 className="mb-2 font-semibold">Sales at this show</h2>
-          {sales.length === 0 ? <p className="text-sm opacity-70">No sales recorded at this show yet.</p> : (
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase"><tr><th className="py-1">When</th><th>Items</th><th>Sold by</th><th>Paid</th><th className="text-right">Total</th><th /></tr></thead>
-              <tbody>
-                {sales.map((sale) => {
-                  const total = sale.lines.reduce((n, l) => n + l.qty * l.unitPriceCents, 0) - sale.discountCents
-                  return (
-                    <tr key={sale.id} className={`border-t border-line ${sale.voidedAt ? 'line-through opacity-50' : ''}`}>
-                      <td className="py-1">{fmtDateTime(sale.soldAt)}</td><td>{sale.lines.length} line(s)</td><td>{nameOf(sale.soldByProfileId)}</td>
-                      <td>{[...new Set(sale.payments.map((p) => methodLabel[p.method]))].join(' + ')}</td>
-                      <td className="text-right">{formatAud(total)}</td>
-                      <td className="text-right">{!sale.voidedAt && <button className="text-xs underline" onClick={() => apply(voidSale(ctx(), sale), { undoable: false })}>Void</button>}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+        <section className="xl:col-span-2" aria-label="Show sales">
+          <h2 className="mb-2 font-semibold">Deals at this show</h2>
+          {sales.length === 0 ? <p className="text-sm opacity-70">No deals logged at this show yet.</p> : (
+            <ul className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
+              {sales.map((sale) => (
+                <DealCard key={sale.id} sale={sale} summary={summarizeDeal(sale, costOf)} itemName={(itemId) => names.get(itemId) ?? 'Unknown card'}
+                  onVoid={() => apply(voidSale(ctx(), sale), { undoable: false })} />
+              ))}
+            </ul>
           )}
         </section>
       </div>

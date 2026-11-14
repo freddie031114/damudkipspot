@@ -9,6 +9,8 @@ import { buildSalesLog, filterLog, financialYearOf, financialYearStarting, profi
 import { DEFAULT_NAMES, PROFILE_IDS } from '../lib/profile'
 import { useIsMobile } from '../lib/useMedia'
 import { btnCls, ghostBtn } from '../ui/common'
+import { DealCard } from '../ui/DealCard'
+import { summarizeDeal } from '../domain/deal'
 import { downloadText, fmtDateTime, methodLabel, nameOf } from '../ui/format'
 
 type Range = 'all' | 'month' | 'lastmonth' | 'fy' | 'lastfy' | 'custom'
@@ -23,7 +25,7 @@ const dayStart = (iso: string) => {
 export function SalesPage() {
   const { raw, apply } = useStore()
   const ctx = useChangeCtx()
-  const [tab, setTab] = useState<'log' | 'trades' | 'cards'>('log')
+  const [tab, setTab] = useState<'deals' | 'log' | 'cards'>('deals')
   const [owner, setOwner] = useState<ProfileId | 'all'>('all')
   const [seller, setSeller] = useState<ProfileId | 'all'>('all')
   const [showId, setShowId] = useState('all')
@@ -57,12 +59,29 @@ export function SalesPage() {
   const cards = useMemo(() => profitPerCard(rows), [rows])
   const fyLabel = financialYearOf(Date.now()).label
 
-  // Sales where cards were taken in trade, within the current filters.
-  const itemName = useMemo(() => new Map(raw.items.map((i) => [i.id, [i.name, i.cardNumber].filter(Boolean).join(' ')])), [raw.items])
-  const trades = useMemo(() => {
-    const ids = new Set(rows.map((r) => r.saleId))
-    return raw.sales.filter((s) => ids.has(s.id) && (s.tradeIns?.length ?? 0) > 0).sort((a, b) => b.soldAt - a.soldAt)
-  }, [rows, raw.sales])
+  // Whole deals (a sale, trade or buy each count once), under the same filters as the card lines.
+  const costOf = useMemo(() => saleLineCosts(raw), [raw])
+  const names = useMemo(() => new Map(raw.items.map((i) => [i.id, [i.name, i.cardNumber].filter(Boolean).join(' ')])), [raw])
+  const itemName = (id: string) => names.get(id) ?? 'Unknown card'
+  const deals = useMemo(() => raw.sales.filter((d) => {
+    if (d.voidedAt && !voided) return false
+    if (owner !== 'all' && !d.lines.some((l) => l.ownerProfileId === owner) && !(d.tradeIns ?? []).some((t) => t.ownerProfileId === owner)) return false
+    if (seller !== 'all' && d.soldByProfileId !== seller) return false
+    if (showId !== 'all' && (showId === 'none' ? d.showId !== null : d.showId !== showId)) return false
+    if (window_.from !== undefined && d.soldAt < window_.from) return false
+    if (window_.to !== undefined && d.soldAt >= window_.to) return false
+    if (method !== 'all' && !d.payments.some((p) => p.method === method)) return false
+    return true
+  }).sort((a, b) => b.soldAt - a.soldAt).map((d) => ({ sale: d, sum: summarizeDeal(d, costOf) })), [raw, costOf, owner, seller, showId, method, voided, window_])
+  const money = useMemo(() => {
+    let cashIn = 0, cashOut = 0, count = 0
+    for (const d of deals) {
+      if (d.sale.voidedAt) continue
+      count++
+      for (const p of d.sale.payments) if (p.method !== 'trade') { if (p.amountCents >= 0) cashIn += p.amountCents; else cashOut -= p.amountCents }
+    }
+    return { cashIn, cashOut, count }
+  }, [deals])
 
   const filters = (
   <div className="mb-3 flex flex-wrap items-end gap-3" aria-label="Filters">
@@ -72,7 +91,7 @@ export function SalesPage() {
       <select className={`${sel} block`} value={seller} onChange={(e) => setSeller(e.target.value as ProfileId | 'all')}><option value="all">Anyone</option>{PROFILE_IDS.map((p) => <option key={p} value={p}>{DEFAULT_NAMES[p]}</option>)}</select></label>
     <label className="text-xs">Show
       <select className={`${sel} block`} value={showId} onChange={(e) => setShowId(e.target.value)}>
-        <option value="all">All sales</option><option value="none">Not at a show</option>
+        <option value="all">Everywhere</option><option value="none">Not at a show</option>
         {raw.shows.filter((s) => !s.deletedAt).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
       </select></label>
     <label className="text-xs">Payment
@@ -91,6 +110,16 @@ export function SalesPage() {
   )
 
   const exportLog = () => downloadText(`sales-${new Date().toISOString().slice(0, 10)}.csv`, salesLogCsv(rows, nameOf))
+  const exportDeals = () =>
+    downloadText(`deals-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([
+      ['When', 'Type', 'Show', 'Logged by', 'Cards out', 'Cards in', 'Cash in/out (AUD)', 'Paid by', 'Cards in valued at (AUD)', 'Counted as sold for (AUD)', 'Profit (AUD)', 'Voided'],
+      ...deals.map(({ sale: d, sum }) => [
+        fmtDateTime(d.soldAt), sum.kind, raw.shows.find((x) => x.id === d.showId)?.name ?? '', nameOf(d.soldByProfileId),
+        d.lines.map((l) => `${l.qty} x ${itemName(l.itemId)}`).join('; '), (d.tradeIns ?? []).map((t) => `${t.qty} x ${itemName(t.itemId)}`).join('; '),
+        (sum.cashCents / 100).toFixed(2), [...new Set(d.payments.filter((x) => x.method !== 'trade').map((x) => methodLabel[x.method]))].join('+'),
+        (sum.tradeValueCents / 100).toFixed(2), (sum.revenueCents / 100).toFixed(2), sum.profitCents === null ? '' : (sum.profitCents / 100).toFixed(2), d.voidedAt ? 'Yes' : 'No',
+      ]),
+    ]))
   const exportCards = () =>
     downloadText(`profit-per-card-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([
       ['Item', 'Qty sold', 'Revenue (AUD)', 'Cost (AUD)', 'Profit (AUD)', 'Units with cost unknown'],
@@ -99,7 +128,7 @@ export function SalesPage() {
 
   return (
     <main className="min-h-0 min-w-0 flex-1 overflow-auto p-5 md:p-7">
-      <h1 className="mb-3 text-xl font-semibold">Sales</h1>
+      <h1 className="mb-3 text-2xl font-semibold tracking-tight">Sales</h1>
       {isMobile ? (
         <details className="mb-3 rounded-xl border border-line bg-surface px-3 py-2">
           <summary className="flex min-h-9 cursor-pointer items-center text-sm font-medium">Filters{(owner !== 'all' || seller !== 'all' || showId !== 'all' || method !== 'all' || range !== 'all' || voided) && <span className="ml-2 rounded-full bg-brand px-2 text-xs text-brand-fg">on</span>}<span className="ml-auto opacity-60" aria-hidden="true">▾</span></summary>
@@ -108,65 +137,44 @@ export function SalesPage() {
       ) : filters}
 
       <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-2xl border border-line bg-surface shadow-card px-3 py-2 text-sm" aria-label="Totals">
-        <span><strong>{totals.count}</strong> lines</span>
-        <span>Revenue <strong>{formatAud(totals.revenueCents)}</strong></span>
-        <span>Cost <strong>{formatAud(totals.costCents)}</strong></span>
-        <span>Profit <strong>{formatAud(totals.profitCents)}</strong></span>
-        {totals.unknownCostRevenueCents > 0 && <span className="text-accent-ink">{formatAud(totals.unknownCostRevenueCents)} of sales have no cost recorded and are not in profit</span>}
+        {tab === 'deals' ? <>
+          <span><strong>{money.count}</strong> deal{money.count === 1 ? '' : 's'}</span>
+          <span>Cash in <strong className="text-emerald-600 dark:text-emerald-400">{formatAud(money.cashIn)}</strong></span>
+          <span>Cash out <strong className="text-accent-ink">{formatAud(money.cashOut)}</strong></span>
+          <span>Net cash <strong>{formatAud(money.cashIn - money.cashOut)}</strong></span>
+          <span>Profit <strong>{formatAud(totals.profitCents)}</strong></span>
+        </> : <>
+          <span><strong>{totals.count}</strong> line{totals.count === 1 ? '' : 's'}</span>
+          <span>Counted as sold for <strong>{formatAud(totals.revenueCents)}</strong></span>
+          <span>Cost <strong>{formatAud(totals.costCents)}</strong></span>
+          <span>Profit <strong>{formatAud(totals.profitCents)}</strong></span>
+        </>}
+        {totals.unknownCostRevenueCents > 0 && <span className="text-accent-ink">Profit leaves out cards with no cost recorded ({formatAud(totals.unknownCostRevenueCents)} worth)</span>}
         <span className="ml-auto flex gap-2">
-          <button className={ghostBtn} onClick={tab === 'cards' ? exportCards : exportLog} disabled={rows.length === 0}>Export CSV</button>
+          <button className={ghostBtn} onClick={tab === 'cards' ? exportCards : tab === 'deals' ? exportDeals : exportLog} disabled={tab === 'deals' ? deals.length === 0 : rows.length === 0}>Export CSV</button>
         </span>
       </div>
 
       <div className="mb-2 flex gap-1" role="tablist">
-        {([['log', 'Sales log'], ['trades', 'Trades'], ['cards', 'Profit per card']] as const).map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded px-3 py-1 text-sm ${tab === k ? 'bg-brand text-brand-fg' : 'hover:bg-hover'}`}>{label}</button>
+        {([['deals', 'Deals'], ['log', 'Cards sold'], ['cards', 'Profit per card']] as const).map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded-lg px-3 py-1.5 text-sm ${tab === k ? 'bg-brand text-brand-fg' : 'hover:bg-hover'}`}>{label}</button>
         ))}
       </div>
 
-      {rows.length === 0 ? <p className="opacity-70">No sales match these filters.</p> : tab === 'trades' ? (
-        trades.length === 0 ? <p className="opacity-70">No trades in this selection. Add cards under “Trade-in” when you sell.</p> : isMobile ? (
-          <ul className="space-y-2" aria-label="Trades">
-            {trades.map((s) => {
-              const credit = s.tradeIns!.reduce((n, t) => n + t.qty * t.creditCents, 0)
-              const cash = s.payments.filter((p) => p.method !== 'trade').reduce((n, p) => n + p.amountCents, 0)
-              return (
-                <li key={s.id} className={`rounded-2xl border border-line bg-surface p-3 shadow-card ${s.voidedAt ? 'line-through opacity-50' : ''}`}>
-                  <p className="text-xs opacity-70">{fmtDateTime(s.soldAt)} · {nameOf(s.soldByProfileId)}{s.showId && <> · {raw.shows.find((x) => x.id === s.showId)?.name}</>}</p>
-                  <p className="mt-1 text-sm"><span className="opacity-60">Gave </span>{s.lines.map((l) => `${l.qty} × ${itemName.get(l.itemId) ?? 'Unknown'}`).join(', ')}</p>
-                  <p className="text-sm"><span className="opacity-60">Got </span>{s.tradeIns!.map((t) => `${t.qty} × ${itemName.get(t.itemId) ?? 'Unknown'} (${formatAud(t.creditCents)})`).join(', ')}</p>
-                  <div className="mt-1.5 flex items-center justify-between text-sm">
-                    <span>Credit <strong>{formatAud(credit)}</strong>{cash !== 0 && <span className="opacity-80"> · {cash > 0 ? `${formatAud(cash)} paid` : `${formatAud(-cash)} handed back`}</span>}</span>
-                    {!s.voidedAt && <button className="flex h-9 items-center px-2 text-xs underline" onClick={() => apply(voidSale(ctx(), s), { undoable: false })}>Void</button>}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase"><tr><th className="py-1">When</th><th>Show</th><th>Sold by</th><th>Gave</th><th>Received</th><th className="text-right">Trade credit</th><th className="text-right">Cash difference</th><th /></tr></thead>
-            <tbody>
-              {trades.map((s) => {
-                const credit = s.tradeIns!.reduce((n, t) => n + t.qty * t.creditCents, 0)
-                const cash = s.payments.filter((p) => p.method !== 'trade').reduce((n, p) => n + p.amountCents, 0)
-                return (
-                  <tr key={s.id} className={`border-t border-line align-top ${s.voidedAt ? 'line-through opacity-50' : ''}`}>
-                    <td className="py-1">{fmtDateTime(s.soldAt)}</td>
-                    <td>{raw.shows.find((x) => x.id === s.showId)?.name || '—'}</td>
-                    <td>{nameOf(s.soldByProfileId)}</td>
-                    <td>{s.lines.map((l, i) => <div key={i}>{l.qty} × {itemName.get(l.itemId) ?? 'Unknown'} <span className="opacity-60">{formatAud(l.unitPriceCents)}</span></div>)}</td>
-                    <td>{s.tradeIns!.map((t, i) => <div key={i}>{t.qty} × {itemName.get(t.itemId) ?? 'Unknown'} <span className="opacity-60">{formatAud(t.creditCents)} each → {nameOf(t.ownerProfileId)}</span></div>)}</td>
-                    <td className="text-right">{formatAud(credit)}</td>
-                    <td className="text-right">{cash === 0 ? '—' : cash > 0 ? `${formatAud(cash)} paid` : `${formatAud(-cash)} handed back`}</td>
-                    <td className="pl-3">{!s.voidedAt && <button className="text-xs underline" onClick={() => apply(voidSale(ctx(), s), { undoable: false })}>Void</button>}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+      {tab === 'deals' ? (
+        deals.length === 0 ? <p className="opacity-70">No deals match these filters. Log one with the Deal button, or in Show mode.</p> : (
+          <>
+            <ul className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3" aria-label="Deals">
+              {deals.slice(0, MAX_ROWS).map(({ sale: d, sum }) => (
+                <DealCard key={d.id} sale={d} summary={sum} itemName={itemName} showName={raw.shows.find((x) => x.id === d.showId)?.name}
+                  onVoid={() => apply(voidSale(ctx(), d), { undoable: false })} />
+              ))}
+            </ul>
+            {deals.length > MAX_ROWS && <p className="mt-2 text-xs opacity-70">Showing the newest {MAX_ROWS} of {deals.length} deals. Export CSV includes all of them.</p>}
+          </>
         )
-      ) : tab === 'log' && isMobile ? (
+      ) : rows.length === 0 ? <p className="opacity-70">No cards sold match these filters.</p>
+      : tab === 'log' && isMobile ? (
         <>
           <ul className="space-y-2" aria-label="Sales log">
             {rows.slice(0, MAX_ROWS).map((r, i) => (

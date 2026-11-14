@@ -82,8 +82,8 @@ export function MobileChrome({ view, setView, onSell, onImport, signOut, banner,
         <div className="grid grid-cols-5 items-end">
           <NavLink to="/" end className={tabCls}>{Icon.inventory(22)}Stock</NavLink>
           <NavLink to="/shows" className={tabCls}>{Icon.shows(22)}Shows</NavLink>
-          <button onClick={onSell} aria-label="Quick sell" className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold">
-            <span className="-mt-5 flex h-12 w-12 items-center justify-center rounded-full bg-accent text-[#2b1600] shadow-pop active:scale-95">{Icon.cash(24)}</span>Sell
+          <button onClick={onSell} aria-label="Log a deal" className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold">
+            <span className="-mt-5 flex h-12 w-12 items-center justify-center rounded-full bg-accent text-[#2b1600] shadow-pop active:scale-95">{Icon.cash(24)}</span>Deal
           </button>
           <NavLink to="/expenses" className={tabCls}>{Icon.expenses(22)}Costs</NavLink>
           <button onClick={() => setMore(true)} className={`${tabCls({ isActive: onMoreScreen })} w-full`} aria-label="More">{Icon.more(22)}More</button>

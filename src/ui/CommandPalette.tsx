@@ -26,7 +26,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     const go = (to: string) => () => navigate(to)
     return [
       { id: 'add', label: 'Add stock', hint: 'N', run: ui.openAdd },
-      { id: 'sell', label: 'Quick sell', hint: 'S', run: () => ui.openSell() },
+      { id: 'sell', label: 'Log a deal (sale, trade or buy)', hint: 'S', run: () => ui.openSell() },
       { id: 'import', label: 'Import stock from a sheet or CSV', run: ui.openImport },
       { id: 'undo', label: 'Undo last change', hint: 'Ctrl+Z', run: () => canUndo && undo() },
       { id: 'inv', label: 'Go to Inventory', hint: 'G I', run: go('/') },

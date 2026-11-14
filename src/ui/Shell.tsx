@@ -8,14 +8,14 @@ import { toggleTheme } from '../lib/theme'
 import { useIsMobile } from '../lib/useMedia'
 import { CheatSheet } from './CheatSheet'
 import { CommandPalette } from './CommandPalette'
-import { accentBtn, btnCls, ghostBtn, isTyping } from './common'
+import { accentBtn, btnCls, ghostBtn, isTyping, Modal } from './common'
 import { Icon } from './icons'
 import { Inventory, type View } from './Inventory'
 import { MobileChrome } from './MobileChrome'
 import { MobileInventory } from './MobileInventory'
 import { Wordmark } from './Logo'
 import { QuickAdd } from './QuickAdd'
-import { QuickSell } from './QuickSell'
+import { DealForm } from './DealForm'
 import { UiContext, useUi } from './UiContext'
 
 // Everything except the inventory loads on demand, which keeps the first screen fast.
@@ -65,7 +65,7 @@ function Toasts() {
   const { toast, dismissToast } = useStore()
   if (!toast) return null
   return (
-    <div role="status" aria-live="polite" className={`fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-sm shadow-pop max-md:bottom-24 max-md:left-3 max-md:right-3 max-md:translate-x-0 max-md:justify-between ${toast.error ? 'bg-red-600 text-white' : 'bg-ink text-page'}`}>
+    <div role="status" aria-live="polite" className={`fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-2.5 text-sm shadow-pop max-md:bottom-36 max-md:left-3 max-md:right-3 max-md:translate-x-0 max-md:justify-between ${toast.error ? 'bg-red-600 text-white' : 'bg-ink text-page'}`}>
       <span>{toast.text}</span>
       {toast.undo && <button className="font-semibold underline underline-offset-2" onClick={() => { toast.undo!(); dismissToast() }}>Undo</button>}
       <button aria-label="Dismiss" className="opacity-70 hover:opacity-100" onClick={dismissToast}>×</button>
@@ -176,7 +176,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
   const overlays = (
     <>
       {modal?.kind === 'add' && <QuickAdd owner={view === 'all' ? (acting ?? 'p1') : view} onClose={() => setModal(null)} />}
-      {modal?.kind === 'sell' && <QuickSell initial={modal.row} onClose={() => setModal(null)} />}
+      {modal?.kind === 'sell' && <Modal title="Log a deal" wide onClose={() => setModal(null)}><DealForm initial={modal.row} onLogged={() => setModal(null)} /></Modal>}
       {modal?.kind === 'keys' && <CheatSheet onClose={() => setModal(null)} />}
       {modal?.kind === 'palette' && <CommandPalette onClose={() => setModal(null)} />}
       <Suspense fallback={null}>
@@ -270,7 +270,7 @@ export function Shell({ email, onSignOut }: { email: string; onSignOut?: () => v
                     <button className={ghostBtn} onClick={ui.openImport}>{Icon.upload(15)}<span className="hidden sm:inline">Import</span></button>
                     <button className={ghostBtn} onClick={undo} disabled={!canUndo} aria-label="Undo">{Icon.undo(15)}<span className="hidden sm:inline">Undo</span></button>
                     <button className={btnCls} onClick={ui.openAdd}>{Icon.plus(16)}Add<kbd className="ml-0.5 hidden rounded bg-white/20 px-1 text-[10px] lg:inline">N</kbd></button>
-                    <button className={accentBtn} onClick={() => ui.openSell()}>{Icon.cash(16)}Sell<kbd className="ml-0.5 hidden rounded bg-black/10 px-1 text-[10px] lg:inline">S</kbd></button>
+                    <button className={accentBtn} onClick={() => ui.openSell()}>{Icon.cash(16)}Deal<kbd className="ml-0.5 hidden rounded bg-black/10 px-1 text-[10px] lg:inline">S</kbd></button>
                   </div>
                 </div>
               </header>

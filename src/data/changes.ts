@@ -4,7 +4,7 @@
  * touches Firebase, so it is fully testable and identical online and offline.
  */
 import { isoDay } from '../domain/expenses'
-import { saleTotals, tradeCreditCents, validateSale, type SaleDraft, type SaleTradeIn } from '../domain/sale'
+import { saleTotals, tradeCreditCents, tradeInputCreditCents, validateSale, type SaleDraft, type SaleTradeIn } from '../domain/sale'
 import type { Adjustment, Item, Lot, ProfileDoc, ProfileId, Sale, Show, ShowExpense, WriteOp } from './types'
 import { NEW_ITEM_DEFAULTS, type NewItem } from './types'
 import type { ImportRow } from '../import/types'
@@ -229,18 +229,26 @@ export function recordSale(ctx: Ctx, draft: SaleDraft, opts: { showId?: string |
       const item = makeItem(ctx, {
         profileId: t.ownerProfileId, name: n.name.trim(), setName: n.setName.trim(), cardNumber: n.cardNumber.trim(),
         variant: n.variant.trim(), condition: n.condition.trim(), game: n.game || 'Pokémon',
-        marketPriceCents: n.marketPriceCents > 0 ? n.marketPriceCents : t.creditCents,
+        marketPriceCents: n.marketPriceCents > 0 ? n.marketPriceCents : Math.round(tradeInputCreditCents(t) / t.qty),
       })
       itemId = item.id
       createdItem = true
       tradeOps.push({ collection: 'items', id: item.id, merge: false, data: item as unknown as Record<string, unknown> })
       if (item.marketPriceCents > 0) tradeOps.push(priceHistoryOp(ctx, item.id, item.marketPriceCents, 'trade-in'))
     }
-    const lot = lotOp(ctx, itemId, t.ownerProfileId, t.qty, t.creditCents, 'trade-in')
-    lot.data.saleId = id
-    lot.data.note = 'Trade-in'
-    tradeOps.push(lot)
-    tradeIns.push({ itemId, ownerProfileId: t.ownerProfileId, qty: t.qty, creditCents: t.creditCents, lotId: lot.id, createdItem })
+    // A lump credit that does not divide evenly is split into two lots a cent apart, so the
+    // stock's cost adds up to exactly what was given for it.
+    const total = tradeInputCreditCents(t)
+    const base = Math.floor(total / t.qty)
+    const extra = total - base * t.qty
+    const parts = extra === 0 ? [{ qty: t.qty, each: base }] : [{ qty: t.qty - extra, each: base }, { qty: extra, each: base + 1 }]
+    parts.forEach((part, k) => {
+      const lot = lotOp(ctx, itemId!, t.ownerProfileId, part.qty, part.each, 'trade-in')
+      lot.data.saleId = id
+      lot.data.note = 'Trade-in'
+      tradeOps.push(lot)
+      tradeIns.push({ itemId: itemId!, ownerProfileId: t.ownerProfileId, qty: part.qty, creditCents: part.each, lotId: lot.id, createdItem: createdItem && k === 0 })
+    })
   }
 
   const sale: Sale = {
@@ -259,14 +267,18 @@ export function recordSale(ctx: Ctx, draft: SaleDraft, opts: { showId?: string |
   }
   const total = saleTotals(draft).totalCents
   const owners = [...new Set(draft.lines.map((l) => l.ownerProfileId))]
+  const cash = draft.payments.filter((p) => p.method !== 'trade').reduce((n, p) => n + p.amountCents, 0)
+  const unitsIn = tradeIns.reduce((n, t) => n + t.qty, 0)
   return {
     saleId: id,
-    label: tradeIns.length ? `Trade ${(total / 100).toFixed(2)}` : `Sale ${(total / 100).toFixed(2)}`,
+    label: draft.lines.length === 0
+      ? `Bought ${unitsIn} card${unitsIn === 1 ? '' : 's'} for ${(-cash / 100).toFixed(2)}`
+      : tradeIns.length ? `Trade logged${cash === 0 ? '' : cash > 0 ? `, they paid ${(cash / 100).toFixed(2)}` : `, we paid ${(-cash / 100).toFixed(2)}`}` : `Sale ${(total / 100).toFixed(2)}`,
     ops: [
       { collection: 'sales', id, merge: false, data: sale as unknown as Record<string, unknown> },
       ...tradeOps,
-      audit(ctx, 'sale', id, 'create', owners[0]!, {
-        totalCents: total, lines: draft.lines.length, owners,
+      audit(ctx, 'sale', id, 'create', owners[0] ?? tradeIns[0]?.ownerProfileId ?? ctx.actor, {
+        totalCents: total, cashCents: cash, lines: draft.lines.length, owners,
         ...(tradeIns.length ? { tradeIns: tradeIns.length, tradeCreditCents: tradeCreditCents(tradeIns) } : {}),
       }),
     ],
@@ -282,7 +294,7 @@ export function voidSale(ctx: Ctx, sale: Sale): Change | null {
   if (sale.voidedAt) return null
   const trades = sale.tradeIns ?? []
   return {
-    label: trades.length ? 'Trade voided' : 'Sale voided',
+    label: sale.lines.length === 0 ? 'Buy voided' : trades.length ? 'Trade voided' : 'Sale voided',
     ops: [
       { collection: 'sales', id: sale.id, merge: true, data: { voidedAt: ctx.now, voidedBy: ctx.actor, ...stamp(ctx) } },
       ...trades.flatMap((t) => [

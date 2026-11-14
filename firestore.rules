@@ -53,7 +53,9 @@ service cloud.firestore {
       allow create: if isOwner()
         && validProfile(request.resource.data.soldByProfileId)
         && request.resource.data.lines is list
-        && request.resource.data.lines.size() > 0
+        // A deal sends cards out, takes cards in, or both. A straight buy has no lines, only trade-ins.
+        && (request.resource.data.lines.size() > 0
+            || (request.resource.data.get('tradeIns', []) is list && request.resource.data.get('tradeIns', []).size() > 0))
         && !('voidedAt' in request.resource.data && request.resource.data.voidedAt != null);
       allow update: if isOwner()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voidedAt', 'voidedBy', 'updatedAt', 'updatedBy'])

@@ -206,3 +206,44 @@ describe('trades', () => {
     expect(c.label).toMatch(/^Trade /)
   })
 })
+
+describe('deals', () => {
+  it('a buy brings cards into stock at what was paid, to the exact cent, and voiding removes them', async () => {
+    const { dealToDraft } = await import('../domain/deal')
+    const s = empty()
+    const c = recordSale(ctx('p1', 5_000), dealToDraft({
+      by: 'p1', out: [], cashCents: -1000, method: 'cash',
+      incoming: [{ itemId: null, ownerProfileId: 'p2', name: 'Eevee', cardNumber: '133', qty: 3, worthCents: null }],
+    }))
+    applyOps(s, c.ops)
+    expect(c.label).toBe('Bought 3 cards for 10.00')
+    expect(s.items).toHaveLength(1)
+    const lots = s.lots.filter((l) => l.source === 'trade-in')
+    expect(lots.reduce((n, l) => n + l.qty * l.unitCostCents!, 0)).toBe(1000)
+    expect(lots.reduce((n, l) => n + l.qty, 0)).toBe(3)
+    const row = buildInventory(s, undefined, 6_000)[0]!
+    expect(row).toMatchObject({ qty: 3, knownCostCents: 1000 })
+    expect(row.item.profileId).toBe('p2')
+    expect(s.sales[0]!.lines).toEqual([])
+
+    applyOps(s, c.inverse!(ctx('p1', 7_000)))
+    expect(buildInventory(s, undefined, 8_000)).toHaveLength(0)
+  })
+
+  it('a trade moves stock both ways in one write', async () => {
+    const { dealToDraft } = await import('../domain/deal')
+    const s = empty()
+    applyOps(s, createItem(ctx(), { profileId: 'p1', name: 'Charizard', marketPriceCents: 8000 }, { qty: 1, unitCostCents: 5000 }).ops)
+    const charizard = s.items[0]!
+    applyOps(s, recordSale(ctx('p1', 5_000), dealToDraft({
+      by: 'p1', cashCents: 2000, method: 'cash',
+      out: [{ itemId: charizard.id, ownerProfileId: 'p1', qty: 1, stickerPriceCents: 8800 }],
+      incoming: [{ itemId: null, ownerProfileId: 'p1', name: 'Pikachu', cardNumber: '', qty: 1, worthCents: 7000 }],
+    })).ops)
+    const rows = buildInventory(s, undefined, 6_000)
+    expect(rows.find((r) => r.item.id === charizard.id)!.qty).toBe(0)
+    const pika = rows.find((r) => r.item.name === 'Pikachu')!
+    expect(pika).toMatchObject({ qty: 1, knownCostCents: 6800 })
+    expect(pika.item.marketPriceCents).toBe(7000)
+  })
+})

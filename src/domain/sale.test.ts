@@ -131,3 +131,36 @@ describe('trades', () => {
     ]))
   })
 })
+
+describe('deals that are not plain sales', () => {
+  it('allows a sale with no lines when cards came in (a buy)', () => {
+    const buy: SaleDraft = {
+      soldByProfileId: 'p1', lines: [], discountCents: 0,
+      tradeIns: [{ itemId: 'T', ownerProfileId: 'p1', qty: 2, creditCents: 500 }],
+      payments: [{ method: 'trade', amountCents: 1000, receivedByProfileId: 'p1' }, { method: 'cash', amountCents: -1000, receivedByProfileId: 'p1' }],
+    }
+    expect(validateSale(buy)).toEqual([])
+  })
+  it('a buy still has to balance', () => {
+    const buy: SaleDraft = {
+      soldByProfileId: 'p1', lines: [], discountCents: 0,
+      tradeIns: [{ itemId: 'T', ownerProfileId: 'p1', qty: 2, creditCents: 500 }],
+      payments: [{ method: 'trade', amountCents: 1000, receivedByProfileId: 'p1' }],
+    }
+    expect(validateSale(buy)).toContain('Payments must add up to the sale total')
+  })
+  it('a lump credit for several cards is checked as a whole', () => {
+    const d: SaleDraft = {
+      soldByProfileId: 'p1', lines: [], discountCents: 0,
+      tradeIns: [{ itemId: 'T', ownerProfileId: 'p1', qty: 3, creditCents: 333, totalCreditCents: 1000 }],
+      payments: [{ method: 'trade', amountCents: 1000, receivedByProfileId: 'p1' }, { method: 'cash', amountCents: -1000, receivedByProfileId: 'p1' }],
+    }
+    expect(validateSale(d)).toEqual([])
+  })
+  it('selling above sticker shows as a negative discount', () => {
+    const sale = quickSale({ ...base, stickerPriceCents: 1000 })
+    sale.discountCents = -200
+    sale.payments[0]!.amountCents = 1200
+    expect(validateSale(sale)).toEqual([])
+  })
+})

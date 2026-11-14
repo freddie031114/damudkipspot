@@ -88,6 +88,12 @@ describe('sales are immutable except for voiding', () => {
     await assertFails(setDoc(doc(owner(), 'sales/s3'), sale({ id: 's3', lines: [] })))
     await assertFails(setDoc(doc(owner(), 'sales/s4'), sale({ id: 's4', soldByProfileId: 'p9' })))
   })
+  it('allows a straight buy: cards in and nothing out, but not a deal with neither', async () => {
+    const tradeIns = [{ itemId: 'i1', ownerProfileId: 'p1', qty: 2, creditCents: 500, lotId: 'l1', createdItem: false }]
+    await assertSucceeds(setDoc(doc(owner(), 'sales/b1'), sale({ id: 'b1', lines: [], tradeIns })))
+    await assertFails(setDoc(doc(owner(), 'sales/b2'), sale({ id: 'b2', lines: [], tradeIns: [] })))
+    await assertFails(setDoc(doc(stranger(), 'sales/b3'), sale({ id: 'b3', lines: [], tradeIns })))
+  })
   it('lets a sale be voided once, and nothing else be changed', async () => {
     await assertSucceeds(setDoc(doc(owner(), 'sales/s1'), sale()))
     await assertFails(updateDoc(doc(owner(), 'sales/s1'), { lines: [] }))

@@ -38,7 +38,17 @@ export interface TradeInInput {
   qty: number
   /** Credit given per card. It becomes the unit cost of the new stock lot. */
   creditCents: number
+  /**
+   * Credit for the whole entry, when it does not divide evenly by `qty` (a deal splits one lump
+   * value across the cards). Overrides `creditCents`; the stock is split into lots so the cents add up exactly.
+   */
+  totalCreditCents?: number
   item?: NewTradeItem
+}
+
+/** Credit given for one trade-in entry (all of its cards). */
+export function tradeInputCreditCents(t: Pick<TradeInInput, 'qty' | 'creditCents' | 'totalCreditCents'>): number {
+  return t.totalCreditCents ?? t.qty * t.creditCents
 }
 
 /** The saved record of a trade-in, kept on the sale so it can be shown and undone. */
@@ -100,19 +110,23 @@ const isInt = (n: number) => Number.isInteger(n)
 export function validateSale(sale: SaleDraft, validProfileIds: readonly string[] = PROFILE_IDS): string[] {
   const errors: string[] = []
   if (!validProfileIds.includes(sale.soldByProfileId)) errors.push('Unknown seller')
-  if (sale.lines.length === 0) errors.push('Add at least one item')
+  // A deal can be a straight buy: cards in, nothing out.
+  if (sale.lines.length === 0 && (sale.tradeIns ?? []).length === 0) errors.push('Add at least one item')
   sale.lines.forEach((l, i) => {
     const n = i + 1
     if (!isInt(l.qty) || l.qty < 1) errors.push(`Line ${n}: quantity must be a whole number of at least 1`)
     if (!isInt(l.unitPriceCents) || l.unitPriceCents < 0) errors.push(`Line ${n}: price must be zero or more`)
     if (!validProfileIds.includes(l.ownerProfileId)) errors.push(`Line ${n}: unknown owner`)
   })
-  if (!isInt(sale.discountCents) || sale.discountCents < 0) errors.push('Discount must be zero or more')
+  // The discount is the gap between the sticker prices and what the deal was really worth, so it
+  // can be negative (the cards went for more than sticker).
+  if (!isInt(sale.discountCents)) errors.push('Discount must be a whole number of cents')
   const trades = sale.tradeIns ?? []
   trades.forEach((t, i) => {
     const n = i + 1
     if (!isInt(t.qty) || t.qty < 1) errors.push(`Trade-in ${n}: quantity must be a whole number of at least 1`)
     if (!isInt(t.creditCents) || t.creditCents < 0) errors.push(`Trade-in ${n}: credit must be zero or more`)
+    if (t.totalCreditCents !== undefined && (!isInt(t.totalCreditCents) || t.totalCreditCents < 0)) errors.push(`Trade-in ${n}: credit must be zero or more`)
     if (!validProfileIds.includes(t.ownerProfileId)) errors.push(`Trade-in ${n}: unknown owner`)
     if (t.itemId === null && !t.item?.name.trim()) errors.push(`Trade-in ${n}: name the card`)
     if (t.itemId === null && t.item && (!isInt(t.item.marketPriceCents) || t.item.marketPriceCents < 0)) errors.push(`Trade-in ${n}: market price must be zero or more`)
@@ -124,11 +138,11 @@ export function validateSale(sale: SaleDraft, validProfileIds: readonly string[]
   })
   if (trades.length > 0) {
     const credited = sale.payments.filter((p) => p.method === 'trade').reduce((n, p) => n + p.amountCents, 0)
-    if (credited !== tradeCreditCents(trades)) errors.push('Trade credit must equal the value of the cards received')
+    if (credited !== trades.reduce((n, x) => n + tradeInputCreditCents(x), 0)) errors.push('Trade credit must equal the value of the cards received')
   }
   const t = saleTotals(sale)
   if (t.totalCents < 0) errors.push('Discount is larger than the sale')
-  if (sale.lines.length > 0 && t.paidCents !== t.totalCents) {
+  if ((sale.lines.length > 0 || trades.length > 0) && t.paidCents !== t.totalCents) {
     errors.push('Payments must add up to the sale total')
   }
   return errors

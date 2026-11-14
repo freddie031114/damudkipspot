@@ -64,6 +64,9 @@ export interface ShowSummary {
   salesCount: number
   totalCents: number
   byMethod: Record<PaymentMethod, number>
+  /** Money received from customers, and money handed to them (buys and trade top-ups), not counting trade credit. */
+  moneyInCents: number
+  moneyOutCents: number
   expensesTotalCents: number
   perProfile: Record<ProfileId, ProfileShowSummary>
   /** Who pays whom to square up; null when nobody owes anything. */
@@ -88,6 +91,8 @@ export function summarizeShow(input: {
   const byMethod: Record<PaymentMethod, number> = { cash: 0, card: 0, payid: 0, trade: 0 }
   let totalCents = 0
   let salesCount = 0
+  let moneyInCents = 0
+  let moneyOutCents = 0
 
   for (const s of input.sales) {
     if (s.voidedAt) continue
@@ -96,7 +101,10 @@ export function summarizeShow(input: {
     const subtotal = lineTotals.reduce((a, b) => a + b, 0)
     const total = subtotal - s.discountCents
     totalCents += total
-    for (const p of s.payments) byMethod[p.method] += p.amountCents
+    for (const p of s.payments) {
+      byMethod[p.method] += p.amountCents
+      if (p.method !== 'trade') { if (p.amountCents >= 0) moneyInCents += p.amountCents; else moneyOutCents -= p.amountCents }
+    }
 
     const lineRev = allocate(total, lineTotals)
     const ownerRev: Record<ProfileId, number> = { p1: 0, p2: 0 }
@@ -157,5 +165,5 @@ export function summarizeShow(input: {
   const d1 = owed('p1')
   const settlement = d1 === 0 ? null : d1 > 0 ? { from: 'p2' as const, to: 'p1' as const, amountCents: d1 } : { from: 'p1' as const, to: 'p2' as const, amountCents: -d1 }
 
-  return { salesCount, totalCents, byMethod, expensesTotalCents, perProfile: per, settlement }
+  return { salesCount, totalCents, byMethod, moneyInCents, moneyOutCents, expensesTotalCents, perProfile: per, settlement }
 }
